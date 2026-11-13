@@ -2,7 +2,7 @@
 // hacia dónde van. Es la parte de pantalla; los cálculos están en viaje.js
 // (agruparParadas, paraderosCerca, sentidosDeParadero, llegadas...).
 // Usa de index.html: mapa, buses, rumbos, COLORES, plegar(), angosto,
-// pedirUbicacion(), ponerYo(), pintarMapa(), cargarDatosViaje() y los enganches
+// pedirUbicacion(), ponerYo(), repintar(), cargarDatosViaje() y los enganches
 // filtroViaje, rumboDeBus, eligiendoEnMapa, alLlegarBuses y salirDeModo.
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -63,7 +63,7 @@
     rumboDeBus = null;
     paradero = resultado = sentido = null;
     mapa.getSource("p-paraderos")?.setData(vacio());
-    pintarMapa(1);
+    repintar();
   }
   $("p-salir").addEventListener("click", salir);
 
@@ -232,7 +232,7 @@
     // En el mapa quedan solo esos buses, cada uno con una flecha hacia donde va.
     filtroViaje = new Set(lista.map((l) => l.bus || l.placa));
     rumboDeBus = new Map(lista.map((l) => [l.bus || l.placa, Math.round(l.rumbo)]));
-    pintarMapa(1);
+    repintar();
     pintarLista();
   }
 

@@ -1,6 +1,6 @@
 // «Planear viaje»: la parte de pantalla. Conecta el formulario del panel y el mapa
 // con la lógica de viaje.js. Usa cosas que define index.html: mapa, buses, rumbos,
-// COLORES, plegar(), angosto, pedirUbicacion(), ponerYo(), pintarMapa() y los
+// COLORES, plegar(), angosto, pedirUbicacion(), ponerYo(), repintar() y los
 // enganches filtroViaje, eligiendoEnMapa y alLlegarBuses.
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -56,7 +56,7 @@
     destino = null;
     $("v-destino").textContent = "Sin definir";
     $("v-opciones").replaceChildren();
-    pintarMapa(1);
+    repintar();
   }
   $("v-salir").addEventListener("click", salir);
 
@@ -144,7 +144,7 @@
       if (!$("v-aviso").textContent || /^(Elige|No hay|Cargando)/.test($("v-aviso").textContent)) {
         avisar(!origen ? "Elige desde dónde sales: tu ubicación o un punto en el mapa." : "Elige a dónde vas: busca una estación o marca un punto en el mapa.");
       }
-      return pintarMapa(1);
+      return repintar();
     }
     todas = V.buscarOpciones(red, origen, destino, ro, rd);
     estimarTodo();
@@ -189,7 +189,7 @@
   function filtrarBuses() {
     const visibles = elegida ? opciones.filter((o) => o.id === elegida) : opciones.slice(0, MAX_OPCIONES);
     filtroViaje = new Set(visibles.flatMap((o) => o.sirven));
-    pintarMapa(1);
+    repintar();
   }
 
   // ---------- Lista ----------

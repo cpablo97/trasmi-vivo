@@ -492,12 +492,14 @@ async function cargar() {
     buses = datos.buses;
     actualizado = datos.actualizado;
     pintarPanel();
-    if (hayNuevos && alLlegarBuses) alLlegarBuses();
     if (hayNuevos) {
       // Guardar dónde está cada bus ahora y arrancar el deslizamiento hacia la posición nueva.
       desde = new Map(dibujado);
       inicio = performance.now();
       requestAnimationFrame(cuadro);
+      // Avisar al modo activo DESPUÉS de guardar "desde": el modo repinta el mapa, y si
+      // lo hiciera antes dejaría los buses ya en su sitio final y no habría nada que deslizar.
+      if (alLlegarBuses) alLlegarBuses();
     }
   } catch (error) {
     document.getElementById("estado").textContent = `Sin conexión con el feed (${error.message}). Reintentando…`;
@@ -546,6 +548,13 @@ function pintarMapa(avance = 1) {
   return features.length;
 }
 
+// Repinta el mapa ya, respetando el deslizamiento si hay uno en curso. Lo usan los
+// modos cuando cambian qué buses se muestran. (pintarMapa(1) los pondría de golpe en
+// su posición final y cortaría la animación.)
+function repintar() {
+  pintarMapa(sinAnimar ? 1 : Math.min(1, (performance.now() - inicio) / DESLIZAR_MS));
+}
+
 // ---------- 5. El panel: totales y botones por sistema ----------
 function pintarPanel() {
   const filtro = document.getElementById("buscar").value.trim().toUpperCase();
@@ -569,7 +578,7 @@ function pintarPanel() {
 // Cuando cambia un filtro: repintar sin reiniciar el deslizamiento.
 function refrescar() {
   pintarPanel();
-  if (performance.now() - inicio >= DESLIZAR_MS) pintarMapa(1);
+  repintar();
 }
 
 function pintarEstado() {
