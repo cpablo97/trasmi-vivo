@@ -89,7 +89,8 @@ export function buscarOpciones(red, origen, destino, radioOrigen, radioDestino) 
  * cercano. En rutas circulares un bus puede estar cerca de dos tramos, uno de
  * ida y otro de vuelta; ahí se desempata con su rumbo (hacia dónde se movió).
  *
- * Devuelve { minuto } (el minuto del horario equivalente a su posición),
+ * Devuelve { minuto, i } (el minuto del horario equivalente a su posición y el
+ * índice de la última parada que dejó atrás),
  * { ambiguo: true, minutos: [...] } si no se puede saber el sentido todavía,
  * o null si el bus está lejos de la ruta.
  */
@@ -106,7 +107,7 @@ export function ubicarBus(red, ruta, pos, rumbo) {
     const t = largo2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / largo2)) : 0;
     const d = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
     const minuto = ruta.p[i][1] + t * (ruta.p[i + 1][1] - ruta.p[i][1]);
-    candidatos.push({ d, minuto, dx, dy });
+    candidatos.push({ d, minuto, dx, dy, i });
     if (d < menor) menor = d;
   }
   if (menor > 400) return null; // va para el patio, o por un desvío
@@ -122,7 +123,9 @@ export function ubicarBus(red, ruta, pos, rumbo) {
     if (alineados.length) buenos = alineados;
   }
   if (disperso(buenos)) return { ambiguo: true, minutos: buenos.map((c) => c.minuto) };
-  return { minuto: buenos.reduce((a, b) => (b.d < a.d ? b : a)).minuto };
+  const mejor = buenos.reduce((a, b) => (b.d < a.d ? b : a));
+  // i = índice de la última parada por la que ya pasó.
+  return { minuto: mejor.minuto, i: mejor.i };
 }
 
 /**
@@ -156,6 +159,10 @@ export function estimar(opcion, buses) {
 
 const simple = (texto) => texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
+// "Museo Nacional A - 2 ó 5" y "Portal 80 T-2" son vagones o plataformas de una
+// estación: se les quita ese sufijo para tratar la estación como un solo lugar.
+export const nombreLimpio = (nombre) => nombre.replace(/\s+(?:[A-H]|T\d?)\s*-\s*.*$/, "").replace(/\s+T-?\d+$/, "").replace(/^Estación\s+/i, "");
+
 /** Busca estaciones y paraderos por nombre, sin importar tildes ni mayúsculas. */
 export function buscarParadas(red, texto, limite = 8) {
   const q = simple(texto.trim());
@@ -165,7 +172,7 @@ export function buscarParadas(red, texto, limite = 8) {
     const [lon, lat, nombre] = red.paradas[id];
     // "Museo Nacional A - 2 ó 5" y "Museo Nacional B - 7" son vagones de la misma
     // estación: se quita el sufijo del vagón para mostrarla una sola vez.
-    const limpio = nombre.replace(/\s+(?:[A-H]|T\d?)\s*-\s*.*$/, "").replace(/^Estación\s+/i, "");
+    const limpio = nombreLimpio(nombre);
     const clave = simple(limpio);
     if (!clave.includes(q) || vistos.has(clave)) continue;
     vistos.set(clave, { nombre: limpio, pos: [lon, lat], empieza: clave.startsWith(q) });
@@ -181,4 +188,97 @@ export function circulo([lon, lat], radio, puntos = 64) {
     anillo.push([lon + (radio * Math.cos(a)) / KX, lat + (radio * Math.sin(a)) / KY]);
   }
   return { type: "Feature", geometry: { type: "Polygon", coordinates: [anillo] }, properties: {} };
+}
+
+// ---------------------------------------------------------------------------
+// «Mi paradero»: qué buses vienen a un paradero y cuánto les falta.
+// ---------------------------------------------------------------------------
+
+/**
+ * Junta en un solo "paradero" los vagones de una misma estación y los paraderos
+ * gemelos. Dos paradas van juntas si tienen el mismo nombre limpio y están a
+ * menos de 300 m (hay nombres repetidos en barrios distintos).
+ * Devuelve [{ nombre, pos: [lon, lat], ids: [idParada, ...] }].
+ */
+export function agruparParadas(red) {
+  const porNombre = new Map();
+  for (const id in red.paradas) {
+    const [lon, lat, nombre] = red.paradas[id];
+    const limpio = nombreLimpio(nombre);
+    const clave = simple(limpio);
+    if (!porNombre.has(clave)) porNombre.set(clave, []);
+    const grupos = porNombre.get(clave);
+    let grupo = grupos.find((g) => distancia(g.pos, [lon, lat]) < 300);
+    if (!grupo) grupos.push((grupo = { nombre: limpio, pos: [lon, lat], ids: [] }));
+    grupo.ids.push(id);
+  }
+  return [...porNombre.values()].flat();
+}
+
+/** Los `n` paraderos más cercanos a un punto, con metros y minutos a pie. */
+export function paraderosCerca(grupos, punto, n = 4) {
+  return grupos
+    .map((g) => ({ ...g, metros: distancia(g.pos, punto) }))
+    .sort((a, b) => a.metros - b.metros)
+    .slice(0, n)
+    .map((g) => ({ ...g, minutos: g.metros / METROS_POR_MINUTO }));
+}
+
+/** Para cada parada, qué rutas pasan por ella: Map idParada -> [{ ruta, i, minuto }]. */
+export function indiceDeRutas(red) {
+  const indice = new Map();
+  for (const ruta in red.rutas) {
+    red.rutas[ruta].p.forEach(([parada, minuto], i) => {
+      if (!indice.has(parada)) indice.set(parada, []);
+      indice.get(parada).push({ ruta, i, minuto });
+    });
+  }
+  return indice;
+}
+
+/**
+ * Buses que vienen hacia un paradero, del que llega primero al último.
+ * `buses` es la lista de /api/buses; `rumbos` es Map idBus -> [dx, dy].
+ * Devuelve { lista: [{ codigo, destino, sistema, bus, placa, pos, falta, paradas }], porConfirmar }.
+ */
+export function llegadas(red, indice, paradero, buses, rumbos = new Map(), maxMin = 30) {
+  // Por cada ruta, los momentos del recorrido en que pasa por este paradero.
+  // Casi siempre es uno; en una ruta circular pueden ser dos (ida y vuelta).
+  const pasadas = new Map();
+  for (const id of paradero.ids) {
+    for (const { ruta, i, minuto } of indice.get(id) || []) {
+      if (!pasadas.has(ruta)) pasadas.set(ruta, []);
+      pasadas.get(ruta).push({ i, minuto });
+    }
+  }
+  for (const lista of pasadas.values()) lista.sort((a, b) => a.minuto - b.minuto);
+
+  const lista = [];
+  let porConfirmar = 0;
+  for (const b of buses) {
+    const veces = pasadas.get(b[8]); // b[8] = route_id
+    if (!veces) continue;
+    const ruta = red.rutas[b[8]];
+    const u = ubicarBus(red, ruta, [b[0], b[1]], rumbos.get(b[5] || b[6]));
+    if (!u) continue;
+    if (u.ambiguo) {
+      // No se sabe su sentido todavía; cuenta solo si en alguno de los dos podría venir.
+      if (veces.some((v) => u.minutos.some((m) => v.minuto > m && v.minuto - m <= maxMin))) porConfirmar++;
+      continue;
+    }
+    // La primera pasada por el paradero que el bus todavía tiene por delante.
+    const proxima = veces.find((v) => v.minuto > u.minuto);
+    if (!proxima) continue; // ya pasó
+    // El dato tiene b[7] segundos de viejo: el bus ya avanzó ese tiempo.
+    const falta = Math.max(0, proxima.minuto - u.minuto - (b[7] || 0) / 60);
+    if (falta > maxMin) continue;
+    lista.push({
+      codigo: ruta.c, destino: ruta.d, sistema: ruta.s,
+      bus: b[5], placa: b[6], pos: [b[0], b[1]],
+      falta,                    // minutos de horario hasta el paradero
+      paradas: proxima.i - u.i, // cuántas paradas le faltan, contando esta
+    });
+  }
+  lista.sort((a, b) => a.falta - b.falta);
+  return { lista, porConfirmar };
 }

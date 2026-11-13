@@ -22,6 +22,8 @@
 
   // ---------- Entrar y salir ----------
   $("planear").addEventListener("click", async () => {
+    salirDeModo?.(); // si estaba abierto «Mi paradero», cerrarlo
+    salirDeModo = salir;
     $("panel").classList.add("viaje");
     $("viaje").hidden = false;
     plegar(false);
@@ -29,8 +31,7 @@
     if (!red) {
       avisar("Cargando rutas y paradas…");
       try {
-        // import() trae el módulo solo cuando hace falta; lo mismo con red.json (1,4 MB).
-        [V, red] = await Promise.all([import("./viaje.js"), fetch("red.json").then((r) => r.json())]);
+        [V, red] = await cargarDatosViaje(); // definida en index.html; la comparten los dos modos
       } catch {
         return avisar("No se pudieron cargar las rutas. Revisa tu conexión e inténtalo de nuevo.");
       }
@@ -41,7 +42,8 @@
     calcular();
   });
 
-  $("v-salir").addEventListener("click", () => {
+  function salir() {
+    salirDeModo = null;
     $("panel").classList.remove("viaje");
     $("viaje").hidden = true;
     elegirEnMapa(null);
@@ -55,7 +57,8 @@
     $("v-destino").textContent = "Sin definir";
     $("v-opciones").replaceChildren();
     pintarMapa(1);
-  });
+  }
+  $("v-salir").addEventListener("click", salir);
 
   // ---------- Origen y destino ----------
   function ponerOrigen(pos, nombre) {

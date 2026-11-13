@@ -63,11 +63,29 @@
   /* El panel nunca es más alto que la pantalla; lo que no cabe se desplaza dentro de #mas. */
   #panel { max-height: calc(100% - 24px); }
   #mas { overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
-  #planear { font: inherit; font-size: 14px; font-weight: 600; color: #fff; background: var(--zonal); border: 0; border-radius: 8px; padding: 9px 10px; cursor: pointer; }
+  #modos { display: flex; gap: 6px; }
+  #modos button { flex: 1; font: inherit; font-size: 14px; font-weight: 600; color: #fff; background: var(--zonal); border: 0; border-radius: 8px; padding: 9px 10px; cursor: pointer; }
   #viaje { display: flex; flex-direction: column; gap: 10px; }
   #viaje[hidden] { display: none; }
   /* En modo viaje se esconden los controles del mapa general. */
-  #panel.viaje :is(#total, #sistemas, #capas, #ubicar, #aviso-ubicacion, #buscar, #planear) { display: none; }
+  #panel:is(.viaje, .paradero) :is(#total, #sistemas, #capas, #ubicar, #aviso-ubicacion, #buscar, #modos) { display: none; }
+  /* ----- Mi paradero ----- */
+  #paradero { display: flex; flex-direction: column; gap: 10px; }
+  #paradero[hidden] { display: none; }
+  #p-titulo { font-size: 16px; font-weight: 700; } #p-titulo small { display: block; font-weight: 400; font-size: 13px; color: var(--suave); }
+  #p-titulo:empty { display: none; }
+  #p-aviso { font-size: 13px; color: var(--dual); } #p-aviso:empty { display: none; }
+  #p-llegadas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .llegada { font: inherit; width: 100%; text-align: left; color: var(--texto); background: var(--fondo); border: 1px solid var(--linea); border-radius: 8px;
+             padding: 7px 10px; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; align-items: baseline; }
+  .llegada .cod { font-weight: 700; font-size: 15px; } .llegada .cod::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); margin-right: 6px; }
+  .llegada .dest { color: var(--suave); font-size: 12.5px; font-weight: 400; }
+  .llegada .tot { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .llegada small { grid-column: 1 / -1; color: var(--suave); font-size: 12.5px; }
+  /* El bus llega antes de que alcances a caminar hasta el paradero. */
+  .llegada.tarde { opacity: .55; }
+  #p-nota { font-size: 11.5px; color: var(--suave); }
+  #p-salir { font: inherit; font-size: 13px; color: var(--texto); background: var(--fondo); border: 1px solid var(--linea); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
   .v-fila { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
   .v-fila b { color: var(--suave); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; width: 48px; flex: none; }
   .v-fila span { min-width: 0; overflow-wrap: anywhere; }
@@ -95,8 +113,8 @@
            padding: 8px 14px; border-radius: 999px; white-space: nowrap; pointer-events: none; }
   @media (max-width: 640px) {
     /* En móvil, el planeador es una hoja pegada abajo para dejar el mapa arriba. */
-    #panel.viaje { top: auto; bottom: 12px; max-height: 58%; }
-    #panel.viaje :is(#progreso, #proxima) { display: none; }
+    #panel:is(.viaje, .paradero) { top: auto; bottom: 12px; max-height: 58%; }
+    #panel:is(.viaje, .paradero) :is(#progreso, #proxima) { display: none; }
     #toque { bottom: auto; top: 16px; }
   }
   button:focus-visible, input:focus-visible { outline: 2px solid var(--zonal); outline-offset: 2px; }
@@ -121,7 +139,23 @@
   <div id="proxima"></div>
   <div id="total"></div>
   <div id="mas">
-  <button id="planear" type="button">Planear viaje</button>
+  <div id="modos">
+    <button id="planear" type="button">Planear viaje</button>
+    <button id="paradero-btn" type="button">Mi paradero</button>
+  </div>
+  <div id="paradero" hidden>
+    <div class="v-fila"><b>Estás</b><span id="p-origen">Sin definir</span></div>
+    <div class="v-botones">
+      <button id="p-ubicacion" type="button">Mi ubicación</button>
+      <button id="p-mapa" type="button" aria-pressed="false">Elegir en el mapa</button>
+    </div>
+    <div id="p-cercanos" class="v-botones" aria-label="Paraderos cercanos"></div>
+    <div id="p-titulo"></div>
+    <div id="p-aviso" role="status"></div>
+    <ol id="p-llegadas"></ol>
+    <div id="p-nota" hidden>Tiempos estimados con el horario oficial y la posición de cada bus; no tienen en cuenta el tráfico.</div>
+    <button id="p-salir" type="button">Salir de mi paradero</button>
+  </div>
   <div id="viaje" hidden>
     <div class="v-fila"><b>Desde</b><span id="v-origen">Sin definir</span></div>
     <div class="v-botones">
@@ -190,7 +224,20 @@ let ultimoCuadro = 0;
 // Enganches para «Planear viaje» (el código está en planear.js).
 let filtroViaje = null;       // en modo viaje: Set con los ids de los buses que sirven
 let eligiendoEnMapa = false;  // true mientras se espera un toque para marcar origen o destino
-let alLlegarBuses = null;     // función que planear.js pide llamar con cada feed nuevo
+let alLlegarBuses = null;     // función que el modo activo pide llamar con cada feed nuevo
+let salirDeModo = null;       // cómo salir del modo activo (planear o paradero); solo hay uno a la vez
+
+// Los dos modos usan los mismos datos: la lógica (viaje.js) y la red de rutas y
+// paradas (red.json, 1,4 MB). Se piden la primera vez que hacen falta y la promesa
+// se guarda, así que el segundo modo no los vuelve a descargar.
+let promesaRed = null;
+function cargarDatosViaje() {
+  promesaRed ??= Promise.all([
+    import("./viaje.js"),
+    fetch("red.json").then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }),
+  ]).catch((error) => { promesaRed = null; throw error; }); // si falla, se podrá reintentar
+  return promesaRed;
+}
 const rumbos = new Map();     // id del bus -> [dx, dy] en metros: hacia dónde se movió la última vez
 
 // ---------- 2. El mapa ----------
@@ -527,5 +574,6 @@ document.getElementById("buscar").addEventListener("input", () => buses.length &
 document.addEventListener("visibilitychange", () => !document.hidden && mapa.loaded() && cargar());
 </script>
 <script src="planear.js"></script>
+<script src="paradero.js"></script>
 </body>
 </html>

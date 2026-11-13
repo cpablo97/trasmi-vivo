@@ -15,7 +15,8 @@ navegador ──▶ /api/buses (función de Netlify) ──▶ gtfs.transmilenio
 | `public/index.html` | La página: el mapa (MapLibre) que pide `/api/buses` cada 10 s y pinta un punto por bus. También pide las estaciones y troncales directamente a la API de ArcGIS de TransMilenio. |
 | `netlify/functions/buses.mjs` | La función: baja el feed de TransMilenio (protobuf), lo convierte a JSON y le pone el nombre a cada ruta. |
 | `public/planear.js` | La pantalla de «Planear viaje»: formulario, lista de opciones y dibujos en el mapa. |
-| `public/viaje.js` | La lógica de «Planear viaje», sin mapa ni HTML: qué rutas sirven, por dónde va cada bus, cuánto tarda. |
+| `public/paradero.js` | La pantalla de «Mi paradero»: paraderos cercanos y lista de buses que vienen. |
+| `public/viaje.js` | La lógica de «Planear viaje» y «Mi paradero», sin mapa ni HTML: qué rutas sirven, por dónde va cada bus, cuánto tarda. |
 | `public/red.json` | Las paradas y el recorrido de cada ruta con sus minutos de horario. Generado. |
 | `datos/rutas.json` | Tabla `route_id` → nombre de ruta, sacada del GTFS estático oficial. Generado. |
 | `scripts/actualizar-rutas.mjs` | Regenera esos dos archivos. |
@@ -61,6 +62,18 @@ Límites:
 - Los tiempos salen del horario oficial, no del tráfico del momento.
 - En rutas circulares (muchas zonales) no se sabe el sentido de un bus hasta verlo moverse, así que durante el primer minuto algunos aparecen como «confirmando su sentido».
 - Una ruta sin ningún bus circulando se considera fuera de servicio y no se muestra.
+
+## Mi paradero
+
+Responde «¿qué buses vienen a mi paradero y cuánto les falta?» sin elegir destino. Toma tu ubicación (o un punto en el mapa), busca los cuatro paraderos más cercanos y, para el que elijas, lista los buses que llegan en los próximos 30 minutos.
+
+TransMilenio no publica horas de llegada por parada (su feed `tripupdates.pb` solo dice si un viaje está programado, añadido o cancelado), así que se calculan aquí:
+
+1. Los vagones de una estación se tratan como un solo paradero (`agruparParadas`).
+2. Para cada ruta que pasa por el paradero, se ubica cada bus dentro del recorrido con su GPS (`ubicarBus`).
+3. Lo que falta = minutos de horario entre la posición del bus y el paradero, menos lo viejo que sea el dato.
+
+Tiene los mismos límites que «Planear viaje»: usa el horario y no el tráfico, y en rutas circulares hay que ver moverse al bus para saber su sentido.
 
 ## Mantener los datos al día
 
