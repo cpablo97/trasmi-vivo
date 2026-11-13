@@ -77,6 +77,15 @@ TransMilenio no publica horas de llegada por parada (su feed `tripupdates.pb` so
 
 Tiene los mismos límites que «Planear viaje»: usa el horario y no el tráfico, y en rutas circulares hay que ver moverse al bus para saber su sentido.
 
+## En teléfono
+
+En pantallas de 640 px o menos el panel es una hoja pegada abajo, con dos estados:
+
+- **Plegada**: título, estado «En vivo» y una línea de resumen (total de buses, o el paradero y su próximo bus, o la ruta elegida y su tiempo).
+- **Abierta**: hasta el 62 % del alto. Las listas de buses y de rutas van arriba; los ajustes (ubicación, radios, formulario del viaje) quedan en bloques plegables.
+
+Todo lo que se toca mide al menos 44 px de alto, los campos de texto usan 16 px para que el iPhone no amplíe la página, se respetan la muesca y la barra de inicio, y no hay botones + / − (se hace zoom con los dedos). Los créditos del mapa están en el botón ⓘ de arriba a la derecha.
+
 ## Mantener los datos al día
 
 TransMilenio publica un GTFS nuevo cada día y a veces cambia los identificadores de las rutas. Si aparecen buses con ruta `?` o «Planear viaje» deja de encontrar rutas que existen, regenera los datos y súbelos:

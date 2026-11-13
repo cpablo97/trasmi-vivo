@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Transmi en vivo</title>
 <meta name="description" content="Los buses de TransMilenio y el SITP de Bogotá, en el mapa y en vivo.">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
@@ -25,11 +25,6 @@
             border: 1px solid var(--linea); border-radius: 8px; padding: 5px 10px; align-items: center; gap: 6px; }
   #plegar svg { width: 12px; height: 12px; transition: transform .2s; }
   #plegar[aria-expanded="true"] svg { transform: rotate(180deg); }
-  @media (max-width: 640px) {
-    #plegar { display: flex; }
-    #panel { padding: 10px 12px; gap: 8px; }
-    #panel.plegado #mas { display: none; }
-  }
   @media (prefers-reduced-motion: reduce) { #plegar svg { transition: none; } }
   #estado { color: var(--suave); font-size: 13px; display: flex; align-items: center; gap: 6px; }
   #progreso { height: 4px; border-radius: 2px; background: var(--linea); overflow: hidden; }
@@ -78,6 +73,7 @@
   #p-otro, #p-sentidos button { font: inherit; font-size: 13px; color: var(--texto); background: var(--fondo); border: 1px solid var(--linea); border-radius: 8px; padding: 6px 10px; cursor: pointer; text-align: left; }
   #p-otro { border-color: var(--dual); }
   #p-sentidos { display: flex; gap: 6px; flex-wrap: wrap; }
+  #p-otro { width: 100%; }
   #p-sentidos:empty { display: none; }
   #p-sentidos button[aria-pressed="true"] { border-color: var(--zonal); color: #8fc0ff; }
   .llegada .fle { display: inline-block; width: 1.2em; font-weight: 700; color: var(--texto); }
@@ -124,11 +120,47 @@
   .destino { width: 22px; height: 22px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: #ff5470; border: 3px solid #fff; }
   #toque { position: absolute; z-index: 3; left: 50%; bottom: 44px; transform: translateX(-50%); background: var(--zonal); color: #fff; font-size: 14px; font-weight: 600;
            padding: 8px 14px; border-radius: 999px; white-space: nowrap; pointer-events: none; }
+  /* Resumen del modo activo. Solo se ve en teléfono y con la hoja plegada (más abajo):
+     con la hoja abierta la misma información ya está en la lista. */
+  #resumen { display: none; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+  /* Bloques plegables ("Cambiar ubicación o radio", el formulario del viaje). */
+  details.ajustes { border: 1px solid var(--linea); border-radius: 8px; }
+  details.ajustes > summary { cursor: pointer; padding: 8px 10px; font-size: 13px; color: var(--suave); display: flex; align-items: center; gap: 8px; list-style: none; }
+  details.ajustes > summary::-webkit-details-marker { display: none; }
+  details.ajustes > summary::after { content: ""; margin-left: auto; flex: none; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); }
+  details.ajustes[open] > summary::after { transform: rotate(-135deg); }
+  details.ajustes > summary b { color: var(--texto); font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+  details.ajustes > div { display: flex; flex-direction: column; gap: 10px; padding: 4px 10px 10px; }
+
+  /* ================= Teléfono ================= */
   @media (max-width: 640px) {
-    /* En móvil, el planeador es una hoja pegada abajo para dejar el mapa arriba. */
-    #panel:is(.viaje, .paradero) { top: auto; bottom: 12px; max-height: 58%; }
+    /* El panel es una hoja pegada abajo: el mapa queda arriba y el pulgar alcanza los controles.
+       env(safe-area-inset-*) deja libre la barra de inicio y la muesca de los teléfonos. */
+    #panel { top: auto; left: 8px; right: 8px; width: auto; bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+             max-height: 62%; padding: 10px 12px; gap: 8px; }
+    #panel.plegado #mas, #panel.plegado #progreso, #panel.plegado #proxima { display: none; }
     #panel:is(.viaje, .paradero) :is(#progreso, #proxima) { display: none; }
-    #toque { bottom: auto; top: 16px; }
+    #panel.plegado:is(.viaje, .paradero) #resumen:not(:empty) { display: block; }
+    #plegar { display: flex; min-height: 44px; padding: 5px 14px; }
+    #toque { bottom: auto; top: calc(12px + env(safe-area-inset-top, 0px)); }
+
+    /* Tamaños para el dedo: 44 px de alto como mínimo en todo lo que se toca. */
+    #panel :is(button, summary, input[type=search]) { min-height: 44px; }
+    #sistemas button { padding: 3px 12px; }
+    #capas label { min-height: 44px; }
+    #capas input { width: 22px; height: 22px; }
+    .v-radio input { height: 36px; }
+    /* Safari en iPhone amplía toda la página al tocar un campo con letra menor de 16 px. */
+    input[type=search] { font-size: 16px; }
+
+    /* Tiras que se desplazan de lado en vez de apilar muchos botones. */
+    .tira { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px; scroll-padding: 0 12px; }
+    .tira::-webkit-scrollbar { display: none; }
+    .tira button { flex: none; white-space: nowrap; }
+
+    /* En teléfono se hace zoom con los dedos: sobran los botones + y −. */
+    .maplibregl-ctrl-top-right .maplibregl-ctrl-group { display: none; }
+    .maplibregl-ctrl-top-right { top: env(safe-area-inset-top, 0px); }
   }
   button:focus-visible, input:focus-visible { outline: 2px solid var(--zonal); outline-offset: 2px; }
   footer { color: var(--suave); font-size: 11.5px; }
@@ -148,6 +180,7 @@
     </button>
   </div>
   <div id="estado">Cargando buses…</div>
+  <div id="resumen"></div>
   <div id="progreso" role="progressbar" aria-label="Tiempo hasta la próxima actualización" aria-valuemin="0" aria-valuemax="100"><i></i></div>
   <div id="proxima"></div>
   <div id="total"></div>
@@ -157,38 +190,48 @@
     <button id="paradero-btn" type="button">Mi paradero</button>
   </div>
   <div id="paradero" hidden>
-    <div class="v-fila"><b>Estás</b><span id="p-origen">Sin definir</span></div>
-    <div class="v-botones">
-      <button id="p-ubicacion" type="button">Mi ubicación</button>
-      <button id="p-mapa" type="button" aria-pressed="false">Elegir en el mapa</button>
-    </div>
-    <label class="v-radio">Paraderos a la redonda <output id="p-radio-txt">300 m</output>
-      <input id="p-radio" type="range" min="100" max="1000" step="50" value="300"></label>
-    <div id="p-cuantos"></div>
-    <div id="p-cercanos" class="v-botones" aria-label="Paraderos cercanos"></div>
     <div id="p-titulo"></div>
-    <button id="p-otro" type="button" hidden></button>
-    <div id="p-sentidos" aria-label="Filtrar por sentido"></div>
+    <div id="p-cercanos" class="v-botones tira" aria-label="Paraderos cercanos"></div>
+    <div id="p-sentidos" class="tira" aria-label="Filtrar por sentido"></div>
     <div id="p-aviso" role="status"></div>
-    <div id="p-leyenda" hidden>En ámbar: buses que están cerca pero aún no se sabe hacia dónde van. Pueden venir o estar alejándose; se aclara cuando se muevan, en la próxima actualización.</div>
     <ol id="p-llegadas"></ol>
+    <button id="p-otro" type="button" hidden></button>
+    <div id="p-leyenda" hidden>En ámbar: buses que están cerca pero aún no se sabe hacia dónde van. Pueden venir o estar alejándose; se aclara cuando se muevan, en la próxima actualización.</div>
     <div id="p-nota" hidden>Tiempos estimados con el horario oficial y la posición de cada bus; no tienen en cuenta el tráfico.</div>
+    <details id="p-ajustes" class="ajustes" open>
+      <summary>Cambiar ubicación o radio</summary>
+      <div>
+        <div class="v-fila"><b>Estás</b><span id="p-origen">Sin definir</span></div>
+        <div class="v-botones">
+          <button id="p-ubicacion" type="button">Mi ubicación</button>
+          <button id="p-mapa" type="button" aria-pressed="false">Elegir en el mapa</button>
+        </div>
+        <label class="v-radio">Paraderos a la redonda <output id="p-radio-txt">300 m</output>
+          <input id="p-radio" type="range" min="100" max="1000" step="50" value="300"></label>
+        <div id="p-cuantos"></div>
+      </div>
+    </details>
     <button id="p-salir" type="button">Salir de mi paradero</button>
   </div>
   <div id="viaje" hidden>
-    <div class="v-fila"><b>Desde</b><span id="v-origen">Sin definir</span></div>
-    <div class="v-botones">
-      <button id="v-ubicacion" type="button">Mi ubicación</button>
-      <button id="v-origen-mapa" type="button" aria-pressed="false">Elegir en el mapa</button>
-    </div>
-    <div class="v-fila"><b>Hacia</b><span id="v-destino">Sin definir</span></div>
-    <input id="v-buscar" type="search" placeholder="Estación o paradero: Museo Nacional…" autocomplete="off" aria-label="Buscar destino por nombre">
-    <div id="v-sugerencias"></div>
-    <div class="v-botones"><button id="v-destino-mapa" type="button" aria-pressed="false">Elegir destino en el mapa</button></div>
-    <label class="v-radio">Camino hasta el paradero <output id="v-ro-txt">500 m</output>
-      <input id="v-ro" type="range" min="300" max="1500" step="100" value="500"></label>
-    <label class="v-radio">Zona de destino <output id="v-rd-txt">1 km</output>
-      <input id="v-rd" type="range" min="500" max="3000" step="250" value="1000"></label>
+    <details id="v-form" class="ajustes" open>
+      <summary id="v-form-titulo">Elige de dónde sales y a dónde vas</summary>
+      <div>
+        <div class="v-fila"><b>Desde</b><span id="v-origen">Sin definir</span></div>
+        <div class="v-botones">
+          <button id="v-ubicacion" type="button">Mi ubicación</button>
+          <button id="v-origen-mapa" type="button" aria-pressed="false">Elegir en el mapa</button>
+        </div>
+        <div class="v-fila"><b>Hacia</b><span id="v-destino">Sin definir</span></div>
+        <input id="v-buscar" type="search" placeholder="Estación o paradero: Museo Nacional…" autocomplete="off" aria-label="Buscar destino por nombre">
+        <div id="v-sugerencias"></div>
+        <div class="v-botones"><button id="v-destino-mapa" type="button" aria-pressed="false">Elegir destino en el mapa</button></div>
+        <label class="v-radio">Camino hasta el paradero <output id="v-ro-txt">500 m</output>
+          <input id="v-ro" type="range" min="300" max="1500" step="100" value="500"></label>
+        <label class="v-radio">Zona de destino <output id="v-rd-txt">1 km</output>
+          <input id="v-rd" type="range" min="500" max="3000" step="250" value="1000"></label>
+      </div>
+    </details>
     <div id="v-aviso" role="status"></div>
     <ol id="v-opciones"></ol>
     <div id="v-nota" hidden>Tiempos estimados con el horario oficial y la posición de los buses; no tienen en cuenta el tráfico. Solo rutas directas.</div>
@@ -205,7 +248,7 @@
   </button>
   <div id="aviso-ubicacion" hidden></div>
   <input id="buscar" type="search" placeholder="Filtrar por ruta: B10, C25, 16-8…" autocomplete="off" aria-label="Filtrar por ruta">
-  <footer>Datos abiertos de TransMilenio S.A. (CC BY-SA 4.0). Proyecto independiente, no afiliado a TransMilenio.</footer>
+  <footer>Datos abiertos de TransMilenio S.A. (CC BY-SA 4.0). Proyecto independiente, no afiliado a TransMilenio. Mapa © OpenStreetMap, © CARTO.</footer>
   </div>
 </div>
 <div id="toque" hidden></div>
@@ -247,6 +290,8 @@ let alLlegarBuses = null;     // función que el modo activo pide llamar con cad
 let rumboDeBus = null;        // en «Mi paradero»: Map id del bus -> grados, para dibujarle una flecha
 let busesDudosos = null;      // en «Mi paradero»: Set de ids de buses cuyo sentido aún no se sabe (se pintan en ámbar)
 let busElegido = null;        // id del bus que la persona tocó (en el mapa o en una lista), o null
+let alPlegar = null;          // función que el modo activo pide llamar cuando la persona pliega o despliega la hoja
+let globo = null;             // el globo de datos abierto en el mapa (solo uno a la vez)
 let alElegirBus = null;       // función que el modo activo pide llamar cuando cambia el bus elegido
 let salirDeModo = null;       // cómo salir del modo activo (planear o paradero); solo hay uno a la vez
 
@@ -270,8 +315,15 @@ const mapa = new maplibregl.Map({
   style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
   center: [-74.1, 4.65], // Bogotá: [longitud, latitud]
   zoom: 10.6,
+  attributionControl: false, // los créditos se añaden abajo, en versión compacta
 });
 mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+// Créditos del mapa (obligatorios): un botón ⓘ que se despliega al tocarlo. En teléfono
+// van arriba a la derecha, porque abajo está la hoja; en pantallas grandes, abajo.
+const telefono = matchMedia("(max-width: 640px)").matches;
+mapa.addControl(new maplibregl.AttributionControl({ compact: true }), telefono ? "top-right" : "bottom-right");
+// MapLibre los muestra desplegados al cargar; en teléfono se dejan cerrados para no tapar el mapa.
+if (telefono) mapa.once("load", () => { const c = document.querySelector(".maplibregl-ctrl-attrib"); c?.classList.remove("maplibregl-compact-show"); c?.removeAttribute("open"); });
 
 mapa.on("load", () => {
   cargarRed();
@@ -334,7 +386,8 @@ mapa.on("load", () => {
     linea("b", `${p.ruta} → ${p.destino}`);
     linea("span", `${p.sistema} · bus ${p.bus} · placa ${p.placa}`);
     linea("small", `Reportó su posición hace ${p.hace_s} s`);
-    new maplibregl.Popup({ closeButton: false }).setLngLat(e.features[0].geometry.coordinates).setDOMContent(div).addTo(mapa);
+    globo?.remove();
+    globo = new maplibregl.Popup({ closeButton: false }).setLngLat(e.features[0].geometry.coordinates).setDOMContent(div).addTo(mapa);
   });
   // Tocar el mapa fuera de un bus quita la selección. (Este manejador se registra después
   // del de arriba, así que para entonces busTocado ya está puesto si se tocó un bus.)
@@ -405,7 +458,8 @@ async function cargarRed() {
       linea("b", p.nom_est);
       linea("span", `${p.tipo_esta === 1 ? "Portal" : "Estación"} · ${p.ub_est || ""}`);
       if (p.num_vag) linea("small", `${p.num_vag} vagones`);
-      new maplibregl.Popup({ closeButton: false }).setLngLat(e.features[0].geometry.coordinates).setDOMContent(div).addTo(mapa);
+      globo?.remove();
+    globo = new maplibregl.Popup({ closeButton: false }).setLngLat(e.features[0].geometry.coordinates).setDOMContent(div).addTo(mapa);
     });
     mapa.on("mouseenter", "estaciones", () => (mapa.getCanvas().style.cursor = "pointer"));
     mapa.on("mouseleave", "estaciones", () => (mapa.getCanvas().style.cursor = ""));
@@ -421,10 +475,26 @@ async function cargarRed() {
 // matchMedia permite preguntar desde JavaScript lo mismo que un @media de CSS.
 const angosto = matchMedia("(max-width: 640px)");
 function plegar(si) {
-  document.getElementById("panel").classList.toggle("plegado", si);
-  document.getElementById("plegar").setAttribute("aria-expanded", String(!si));
+  const panel = document.getElementById("panel"), boton = document.getElementById("plegar");
+  panel.classList.toggle("plegado", si);
+  boton.setAttribute("aria-expanded", String(!si));
+  // El texto del botón dice lo que va a pasar: en un modo abre o esconde la lista.
+  const enModo = panel.classList.contains("viaje") || panel.classList.contains("paradero");
+  boton.querySelector("span").textContent = !enModo ? "Opciones" : si ? "Ver lista" : "Ocultar";
 }
-document.getElementById("plegar").addEventListener("click", () => plegar(!document.getElementById("panel").classList.contains("plegado")));
+document.getElementById("plegar").addEventListener("click", () => {
+  plegar(!document.getElementById("panel").classList.contains("plegado"));
+  // La hoja cambió de alto: el modo activo vuelve a encuadrar el mapa en la parte que queda libre.
+  requestAnimationFrame(() => alPlegar?.());
+});
+
+// Márgenes para encuadrar el mapa sin que el panel tape lo importante:
+// en teléfono el panel está abajo; en pantallas grandes, a la izquierda.
+function margenMapa() {
+  const panel = document.getElementById("panel").getBoundingClientRect();
+  return angosto.matches ? { top: 70, bottom: panel.height + 50, left: 45, right: 45 }
+                         : { top: 90, bottom: 90, left: panel.width + 90, right: 90 };
+}
 // En móvil arranca plegado para que se vea el mapa; en pantallas grandes la clase no tiene efecto.
 plegar(angosto.matches);
 
@@ -473,8 +543,9 @@ document.getElementById("ubicar").addEventListener("click", async () => {
     // En móvil, plegar el panel para que no tape el punto (salvo que haya un aviso que leer).
     if (!lejos) plegar(true);
     // offset baja el centro para que el punto quede en la parte del mapa que el panel no cubre.
+    // (La hoja está abajo, así que el centro se sube: desplazamiento negativo.)
     const tapado = angosto.matches ? document.getElementById("panel").offsetHeight + 12 : 0;
-    mapa.flyTo({ center: aqui, zoom: 15, offset: [0, tapado / 2] });
+    mapa.flyTo({ center: aqui, zoom: 15, offset: [0, -tapado / 2] });
     avisar(lejos ? "Estás fuera de Bogotá: aquí no vas a ver buses." : "");
   } catch (mensaje) {
     avisar(String(mensaje));
@@ -588,6 +659,8 @@ function pintarMapa(avance = 1) {
 // resalte su fila en la lista.
 function elegirBus(id) {
   if (id === busElegido) return;
+  globo?.remove(); // el globo que hubiera era de otro bus (o de una estación)
+  globo = null;
   busElegido = id;
   if (buses.length) repintar();
   alElegirBus?.(id);

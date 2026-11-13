@@ -24,9 +24,11 @@
   $("planear").addEventListener("click", async () => {
     salirDeModo?.(); // si estaba abierto «Mi paradero», cerrarlo
     salirDeModo = salir;
+    elegirBus(null); // cierra el globo o la selección que viniera del mapa general
     $("panel").classList.add("viaje");
     $("viaje").hidden = false;
     plegar(false);
+    alPlegar = encuadrarViaje;
     mapa.triggerRepaint();
     if (!red) {
       avisar("Cargando rutas y paradas…");
@@ -44,7 +46,10 @@
 
   function salir() {
     salirDeModo = null;
+    alPlegar = null;
+    $("resumen").textContent = "";
     $("panel").classList.remove("viaje");
+    plegar($("panel").classList.contains("plegado")); // refresca el texto del botón
     $("viaje").hidden = true;
     elegirEnMapa(null);
     alLlegarBuses = null;
@@ -55,16 +60,30 @@
     marcaDestino = null;
     destino = null;
     $("v-destino").textContent = "Sin definir";
+    tituloFormulario();
     $("v-opciones").replaceChildren();
     repintar();
   }
   $("v-salir").addEventListener("click", salir);
+
+  // El formulario es un bloque plegable. Con origen y destino ya puestos se cierra y su
+  // título resume el viaje ("Tu ubicación → Museo Nacional"), para dejarle el sitio a las opciones.
+  function tituloFormulario() {
+    const titulo = $("v-form-titulo");
+    if (origen && destino) {
+      titulo.replaceChildren(Object.assign(document.createElement("b"), { textContent: `${$("v-origen").textContent} → ${$("v-destino").textContent}` }), "Cambiar");
+    } else {
+      titulo.textContent = "Elige de dónde sales y a dónde vas";
+    }
+    $("v-form").open = !(origen && destino);
+  }
 
   // ---------- Origen y destino ----------
   function ponerOrigen(pos, nombre) {
     origen = pos;
     ponerYo(pos);
     $("v-origen").textContent = nombre;
+    tituloFormulario();
     calcular(true);
   }
   function ponerDestino(pos, nombre) {
@@ -72,6 +91,7 @@
     if (!marcaDestino) marcaDestino = new maplibregl.Marker({ element: Object.assign(document.createElement("div"), { className: "destino" }), anchor: "bottom-left" });
     marcaDestino.setLngLat(pos).addTo(mapa);
     $("v-destino").textContent = nombre;
+    tituloFormulario();
     calcular(true);
   }
 
@@ -149,6 +169,7 @@
     todas = V.buscarOpciones(red, origen, destino, ro, rd);
     estimarTodo();
     $("v-nota").hidden = !opciones.length;
+    if (encuadrar) $("mas").scrollTop = 0; // origen o destino nuevos: la lista se ve desde arriba
     if (encuadrar) encuadrarViaje();
   }
 
@@ -227,6 +248,10 @@
       lista.push(Object.assign(document.createElement("li"), { id: "v-nota", textContent: `Y ${opciones.length - MAX_OPCIONES} rutas más lentas que no se muestran.` }));
     }
     $("v-opciones").replaceChildren(...lista);
+    // Resumen para cuando la hoja está plegada: la opción elegida o, si no hay, la mejor.
+    const op = opciones.find((o) => o.id === elegida) || opciones[0];
+    $("resumen").textContent = !op ? ""
+      : `${op.codigo} · ${op.est.total === null ? "sin bus en camino" : `~${min(op.est.total)}`}${elegida || opciones.length === 1 ? "" : ` · ${opciones.length} opciones`}`;
     dibujarTramo();
   }
 
@@ -243,7 +268,7 @@
     mapa.addLayer({ id: "v-paradas", type: "circle", source: "v-paradas", paint: { "circle-radius": 7, "circle-color": "#fff", "circle-stroke-color": "#12171a", "circle-stroke-width": 3 } }, "buses");
     mapa.addLayer({
       id: "v-paradas-nombre", type: "symbol", source: "v-paradas",
-      layout: { "text-field": ["get", "texto"], "text-size": 13, "text-font": ["Montserrat SemiBold", "Open Sans Bold"], "text-anchor": "left", "text-offset": [1, 0], "text-allow-overlap": true },
+      layout: { "text-field": ["get", "texto"], "text-size": 13, "text-font": ["Montserrat SemiBold", "Open Sans Bold"], "text-anchor": "top", "text-offset": [0, 0.9], "text-allow-overlap": true }, // debajo del punto: así no se corta en el borde de la pantalla
       paint: { "text-color": "#fff", "text-halo-color": "#0d1113", "text-halo-width": 2 },
     });
   }
@@ -280,10 +305,6 @@
       const sirven = new Set(op.sirven);
       for (const b of buses) if (sirven.has(b[5] || b[6]) && V.distancia([b[0], b[1]], op.subir.pos) < 4000) caja.extend([b[0], b[1]]);
     }
-    const panel = $("panel").getBoundingClientRect();
-    const margen = angosto.matches
-      ? { top: 60, bottom: panel.height + 40, left: 40, right: 40 }
-      : { top: 60, bottom: 60, left: panel.width + 60, right: 60 };
-    mapa.fitBounds(caja, { padding: margen, maxZoom: 15 });
+    mapa.fitBounds(caja, { padding: margenMapa(), maxZoom: 15 });
   }
 })();

@@ -31,9 +31,12 @@
   $("paradero-btn").addEventListener("click", async () => {
     salirDeModo?.(); // si estaba abierto «Planear viaje», cerrarlo
     salirDeModo = salir;
+    elegirBus(null); // cierra el globo o la selección que viniera del mapa general
     $("panel").classList.add("paradero");
     $("paradero").hidden = false;
+    $("p-ajustes").open = !marcadorYo; // sin ubicación todavía: mostrar cómo darla
     plegar(false);
+    alPlegar = encuadrar;
     mapa.triggerRepaint();
     if (!red) {
       avisar("Cargando rutas y paradas…");
@@ -60,12 +63,15 @@
 
   function salir() {
     salirDeModo = null;
-    $("panel").classList.remove("paradero");
     $("paradero").hidden = true;
     elegirEnMapa(false);
     clearInterval(reloj);
     alLlegarBuses = null;
     alElegirBus = null;
+    alPlegar = null;
+    $("resumen").textContent = "";
+    $("panel").classList.remove("paradero");
+    plegar($("panel").classList.contains("plegado")); // refresca el texto del botón
     filtroViaje = null;
     rumboDeBus = null;
     busesDudosos = null;
@@ -94,7 +100,7 @@
     }, "buses");
     mapa.addLayer({
       id: "p-paraderos-flecha", type: "symbol", source: "p-paraderos", filter: ["has", "rumbo"],
-      layout: { "icon-image": "flecha", "icon-rotate": ["get", "rumbo"], "icon-rotation-alignment": "map", "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-size": 2 },
+      layout: { "icon-image": "flecha", "icon-rotate": ["get", "rumbo"], "icon-rotation-alignment": "map", "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-size": 1.5 },
     }, "buses");
     mapa.addLayer({
       id: "p-paraderos-nombre", type: "symbol", source: "p-paraderos", filter: ["get", "elegido"],
@@ -147,6 +153,7 @@
     aqui = pos;
     ponerYo(pos);
     $("p-origen").textContent = nombre;
+    $("p-ajustes").open = false; // ya hay ubicación: dejar el espacio para la lista de buses
     buscarCercanos(false);
   }
 
@@ -180,7 +187,7 @@
   const flechas = (p) => p.sentidos.map((s) => s.flecha).join("");
   const hacia = (p) => new Intl.ListFormat("es", { type: "conjunction" }).format(p.sentidos.map((s) => s.nombre)); // "norte, sur y oriente"
 
-  function elegirParadero(p, encuadrar) {
+  function elegirParadero(p, conEncuadre) {
     paradero = p;
     sentido = null;
 
@@ -218,16 +225,16 @@
     pintarSentidos();
     pintarParaderos();
     calcular();
-    if (encuadrar) {
-      // Que se vean la persona y todos los paraderos cercanos, sin que el panel los tape.
-      const caja = new maplibregl.LngLatBounds(aqui, aqui);
-      for (const c of cercanos) caja.extend(c.pos);
-      // ...y el círculo del radio completo.
-      for (const punto of V.circulo(aqui, +$("p-radio").value, 8).geometry.coordinates[0]) caja.extend(punto);
-      const panel = $("panel").getBoundingClientRect();
-      const margen = angosto.matches ? { top: 70, bottom: panel.height + 50, left: 50, right: 50 } : { top: 90, bottom: 90, left: panel.width + 90, right: 90 };
-      mapa.fitBounds(caja, { padding: margen, maxZoom: 16.5 });
-    }
+    if (conEncuadre) { $("mas").scrollTop = 0; encuadrar(); } // paradero nuevo: la lista se ve desde arriba
+  }
+
+  // Que se vean la persona, los paraderos cercanos y el círculo del radio, sin que el panel los tape.
+  function encuadrar() {
+    if (!aqui) return;
+    const caja = new maplibregl.LngLatBounds(aqui, aqui);
+    for (const c of cercanos) caja.extend(c.pos);
+    for (const punto of V.circulo(aqui, +$("p-radio").value, 8).geometry.coordinates[0]) caja.extend(punto);
+    mapa.fitBounds(caja, { padding: margenMapa(), maxZoom: 16.5 });
   }
 
   // En una estación con buses en dos sentidos: botones para ver solo uno.
@@ -320,6 +327,11 @@
       return li;
     });
     $("p-llegadas").replaceChildren(...filas);
+    // Resumen para cuando la hoja está plegada: paradero, sentido y el próximo bus.
+    const primero = visibles()[0];
+    const cuando = !primero ? "sin buses por ahora"
+      : `${primero.codigo} ${primero.falta - pasado < 1 ? "llegando" : `en ~${Math.round(primero.falta - pasado)} min`}${primero.dudoso ? " ?" : ""}`;
+    $("resumen").textContent = `${paradero.nombre} ${flechas(paradero)} · ${cuando}`;
     $("p-nota").hidden = !filas.length;
     $("p-leyenda").hidden = !visibles().some((l) => l.dudoso);
     if (!/ubicación|fuera/i.test($("p-aviso").textContent)) {
