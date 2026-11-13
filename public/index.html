@@ -74,6 +74,7 @@
   #paradero[hidden] { display: none; }
   #p-titulo { font-size: 16px; font-weight: 700; } #p-titulo small { display: block; font-weight: 400; font-size: 13px; color: var(--suave); }
   #p-titulo:empty { display: none; }
+  #p-cuantos { font-size: 12.5px; color: var(--suave); } #p-cuantos:empty { display: none; }
   #p-otro, #p-sentidos button { font: inherit; font-size: 13px; color: var(--texto); background: var(--fondo); border: 1px solid var(--linea); border-radius: 8px; padding: 6px 10px; cursor: pointer; text-align: left; }
   #p-otro { border-color: var(--dual); }
   #p-sentidos { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -157,6 +158,9 @@
       <button id="p-ubicacion" type="button">Mi ubicación</button>
       <button id="p-mapa" type="button" aria-pressed="false">Elegir en el mapa</button>
     </div>
+    <label class="v-radio">Paraderos a la redonda <output id="p-radio-txt">300 m</output>
+      <input id="p-radio" type="range" min="100" max="1000" step="50" value="300"></label>
+    <div id="p-cuantos"></div>
     <div id="p-cercanos" class="v-botones" aria-label="Paraderos cercanos"></div>
     <div id="p-titulo"></div>
     <button id="p-otro" type="button" hidden></button>

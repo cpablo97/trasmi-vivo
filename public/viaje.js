@@ -312,11 +312,18 @@ export function sentidoMasCercano(sentidos, grados) {
   return sentidos.reduce((mejor, s) => (!mejor || diferencia(s.grados, grados) < diferencia(mejor.grados, grados) ? s : mejor), null);
 }
 
-/** Los `n` paraderos más cercanos a un punto, con metros y minutos a pie. */
-export function paraderosCerca(grupos, punto, n = 4) {
-  return grupos
+/**
+ * Los paraderos alrededor de un punto, del más cercano al más lejano, con metros
+ * y minutos a pie. Se devuelven los que estén a `radio` metros o menos, hasta `n`.
+ * Si no hay ninguno dentro del radio, devuelve igual el más cercano: siempre hay
+ * al menos uno para mostrar.
+ */
+export function paraderosCerca(grupos, punto, n = 4, radio = Infinity) {
+  const ordenados = grupos
     .map((g) => ({ ...g, metros: distancia(g.pos, punto) }))
-    .sort((a, b) => a.metros - b.metros)
+    .sort((a, b) => a.metros - b.metros);
+  const dentro = ordenados.filter((g) => g.metros <= radio);
+  return (dentro.length ? dentro : ordenados.slice(0, 1))
     .slice(0, n)
     .map((g) => ({ ...g, minutos: g.metros / METROS_POR_MINUTO }));
 }

@@ -7,7 +7,8 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const MAX_LLEGADAS = 12;
-  const N_CERCANOS = 5;
+  const MAX_BOTONES = 12;   // paraderos que se listan como botones, para que el panel no se vuelva interminable
+  const MAX_EN_MAPA = 80;   // paraderos que se dibujan en el mapa
 
   let V = null, red = null;
   let grupos = null;      // todos los paraderos (vagones de una estación ya agrupados)
@@ -69,6 +70,7 @@
     rumboDeBus = null;
     paradero = resultado = sentido = null;
     mapa.getSource("p-paraderos")?.setData(vacio());
+    mapa.getSource("p-radio")?.setData(vacio());
     repintar();
   }
   $("p-salir").addEventListener("click", salir);
@@ -76,6 +78,9 @@
   // Los paraderos cercanos en el mapa: un círculo cada uno, con una flecha que señala
   // hacia dónde van sus buses. El elegido se ve más grande y con su nombre.
   function prepararCapas() {
+    mapa.addSource("p-radio", { type: "geojson", data: vacio() });
+    mapa.addLayer({ id: "p-radio", type: "fill", source: "p-radio", paint: { "fill-color": "#4fc3ff", "fill-opacity": 0.07 } }, "buses");
+    mapa.addLayer({ id: "p-radio-borde", type: "line", source: "p-radio", paint: { "line-color": "#4fc3ff", "line-width": 1.5, "line-dasharray": [2, 2] } }, "buses");
     mapa.addSource("p-paraderos", { type: "geojson", data: vacio() });
     mapa.addLayer({
       id: "p-paraderos", type: "circle", source: "p-paraderos",
@@ -141,11 +146,33 @@
     aqui = pos;
     ponerYo(pos);
     $("p-origen").textContent = nombre;
-    cercanos = V.paraderosCerca(grupos, pos, N_CERCANOS);
+    buscarCercanos(false);
+  }
+
+  // Los paraderos que están dentro del radio que marca el control deslizante.
+  function buscarCercanos(conservar) {
+    const radio = +$("p-radio").value;
+    const todos = V.paraderosCerca(grupos, aqui, Infinity, radio);
+    const antes = paradero?.ids[0];
+    cercanos = todos.slice(0, MAX_EN_MAPA);
     // Hacia dónde van los buses de cada uno.
     for (const c of cercanos) c.sentidos = V.sentidosDeParadero(red, indice, c);
-    elegirParadero(cercanos[0], true);
+
+    const fuera = cercanos[0].metros > radio; // no había ninguno dentro del radio
+    $("p-cuantos").textContent = fuera ? `No hay paraderos a ${a10(radio)} o menos. Este es el más cercano, a ${a10(cercanos[0].metros)}.`
+      : todos.length > MAX_BOTONES ? `${todos.length} paraderos en ese radio. Aquí abajo están los ${MAX_BOTONES} más cercanos; en el mapa puedes tocar cualquiera.`
+      : `${todos.length} ${todos.length === 1 ? "paradero" : "paraderos"} en ese radio.`;
+    // El círculo del radio en el mapa.
+    mapa.getSource("p-radio").setData({ ...V.circulo(aqui, radio), properties: {} });
+
+    // Al mover el control se conserva el paradero que se estaba mirando, si sigue en la lista.
+    const mismo = conservar && cercanos.find((c) => c.ids[0] === antes);
+    elegirParadero(mismo || cercanos[0], true);
   }
+  $("p-radio").addEventListener("input", () => {
+    $("p-radio-txt").textContent = a10(+$("p-radio").value);
+    if (aqui) buscarCercanos(true);
+  });
 
   // ---------- Qué paradero ----------
   // Texto corto del sentido: "↑ norte" o "↑↓ norte y sur".
@@ -157,7 +184,10 @@
     sentido = null;
 
     // Botones para cambiar entre los paraderos cercanos, cada uno con su flecha.
-    $("p-cercanos").replaceChildren(...cercanos.map((c) => {
+    // Se listan los más cercanos; si el elegido (tocado en el mapa) está más lejos, se añade.
+    const enBotones = cercanos.slice(0, MAX_BOTONES);
+    if (!enBotones.includes(p)) enBotones.push(p);
+    $("p-cercanos").replaceChildren(...enBotones.map((c) => {
       const boton = crear("button", { type: "button", textContent: `${flechas(c)} ${c.nombre} · ${a10(c.metros)}` });
       boton.setAttribute("aria-pressed", String(c === paradero));
       boton.setAttribute("aria-label", `${c.nombre}, buses hacia el ${hacia(c)}, a ${a10(c.metros)}`);
@@ -191,6 +221,8 @@
       // Que se vean la persona y todos los paraderos cercanos, sin que el panel los tape.
       const caja = new maplibregl.LngLatBounds(aqui, aqui);
       for (const c of cercanos) caja.extend(c.pos);
+      // ...y el círculo del radio completo.
+      for (const punto of V.circulo(aqui, +$("p-radio").value, 8).geometry.coordinates[0]) caja.extend(punto);
       const panel = $("panel").getBoundingClientRect();
       const margen = angosto.matches ? { top: 70, bottom: panel.height + 50, left: 50, right: 50 } : { top: 90, bottom: 90, left: panel.width + 90, right: 90 };
       mapa.fitBounds(caja, { padding: margen, maxZoom: 16.5 });

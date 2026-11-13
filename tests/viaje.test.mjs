@@ -194,3 +194,10 @@ test("un bus que llega por una calle transversal sí cuenta; uno en contravía n
   assert.equal(vieneHacia(red, ruta, 2, u(90)), true);   // viene de una transversal y va a girar
   assert.equal(vieneHacia(red, ruta, 2, u(180)), false); // sentido contrario
 });
+
+test("limita los paraderos a un radio, pero nunca devuelve una lista vacía", () => {
+  const g = agruparParadas(red), desde = [-74.1, 4.6099]; // junto a la parada 2
+  assert.deepEqual(paraderosCerca(g, desde, 10, 600).map((p) => p.nombre), ["Parada 2", "Parada 1", "Parada 3"]);
+  assert.deepEqual(paraderosCerca(g, desde, 2, 600).map((p) => p.nombre), ["Parada 2", "Parada 1"]); // tope de cantidad
+  assert.deepEqual(paraderosCerca(g, [-74.11, 4.61], 10, 100).map((p) => p.nombre), ["Parada 2"]); // nada a 100 m: el más cercano
+});

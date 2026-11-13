@@ -65,7 +65,7 @@ Límites:
 
 ## Mi paradero
 
-Responde «¿qué buses vienen a mi paradero y cuánto les falta?» sin elegir destino. Toma tu ubicación (o un punto en el mapa), busca los cuatro paraderos más cercanos y, para el que elijas, lista los buses que llegan en los próximos 30 minutos.
+Responde «¿qué buses vienen a mi paradero y cuánto les falta?» sin elegir destino. Toma tu ubicación (o un punto en el mapa), busca los paraderos que estén dentro del radio que elijas (de 100 m a 1 km, 300 m al abrir) y, para el que elijas, lista los buses que llegan en los próximos 30 minutos. En el mapa se dibujan todos los del radio; en el panel, los 12 más cercanos.
 
 TransMilenio no publica horas de llegada por parada (su feed `tripupdates.pb` solo dice si un viaje está programado, añadido o cancelado), así que se calculan aquí:
 
