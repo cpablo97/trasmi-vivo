@@ -1,7 +1,7 @@
 // Pruebas de la lógica de «Planear viaje» con una red de juguete.  npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { distancia, buscarOpciones, ubicarBus, estimar, buscarParadas, agruparParadas, paraderosCerca, indiceDeRutas, llegadas, sentidosDeParadero, sentidoMasCercano, puntoCardinal, costado, rumboEntre } from "../public/viaje.js";
+import { distancia, buscarOpciones, ubicarBus, estimar, buscarParadas, agruparParadas, paraderosCerca, indiceDeRutas, llegadas, sentidosDeParadero, sentidoMasCercano, vieneHacia, puntoCardinal, costado, rumboEntre } from "../public/viaje.js";
 
 // Paradas sobre una avenida de sur a norte, una cada ~550 m (0.005° de latitud).
 const P = (n) => [-74.1, 4.6 + n * 0.005, `Parada ${n}`];
@@ -132,7 +132,8 @@ test("en un circuito usa el rumbo y cuenta aparte los buses sin sentido conocido
   const alSur = llegadas(red, indice, paradero, [b], new Map([["c1", [0, -100]]]));
   assert.ok(Math.abs(alSur.lista[0].falta - 1) < 0.05, `${alSur.lista[0]?.falta}`); // ya viene de vuelta
   const alNorte = llegadas(red, indice, paradero, [b], new Map([["c1", [0, 100]]]));
-  assert.ok(Math.abs(alNorte.lista[0].falta - 9) < 0.05); // acaba de pasar: sube hasta d y vuelve
+  // Va subiendo: pasaría por b solo después de llegar a d y devolverse. Va en contravía: no se muestra.
+  assert.deepEqual(alNorte.lista, []);
 });
 
 // ---------- Sentidos y costados ----------
@@ -185,4 +186,11 @@ test("junta rumbos vecinos en un solo sentido y asigna cada llegada al más pare
   assert.deepEqual(sentidos.map((s) => [s.nombre, s.rutas]), [["norte", 3], ["sur", 1]]);
   assert.equal(sentidoMasCercano(sentidos, 60).nombre, "norte");
   assert.equal(sentidoMasCercano(sentidos, 200).nombre, "sur");
+});
+
+test("un bus que llega por una calle transversal sí cuenta; uno en contravía no", () => {
+  const ruta = red.rutas.norte, u = (rumbo) => ({ minuto: 1, i: 0, rumbo });
+  assert.equal(vieneHacia(red, ruta, 2, u(0)), true);    // mismo sentido
+  assert.equal(vieneHacia(red, ruta, 2, u(90)), true);   // viene de una transversal y va a girar
+  assert.equal(vieneHacia(red, ruta, 2, u(180)), false); // sentido contrario
 });

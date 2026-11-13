@@ -167,6 +167,9 @@
         const id = b[5] || b[6];
         const u = V.ubicarBus(red, red.rutas[op.id], [b[0], b[1]], rumbos.get(id));
         if (!u) return null;
+        // Un bus que va en sentido contrario al de tu paradero aún tiene que ir hasta el final
+        // de la ruta y devolverse: no cuenta como "en camino".
+        if (!u.ambiguo && !V.vieneHacia(red, red.rutas[op.id], op.iSubir, u)) return null;
         // Sirve si todavía no pasó por tu paradero (o si aún no se sabe su sentido y podría servir).
         if (u.ambiguo ? u.minutos.some((m) => m < op.minutoSubir) : u.minuto < op.minutoSubir) op.sirven.push(id);
         return { ...u, hace_s: b[7] };

@@ -260,6 +260,21 @@ function rumboAlSalir(red, ruta, i) {
 }
 
 /**
+ * ¿El bus viene hacia la parada número i, o va en sentido contrario?
+ *
+ * Muchas rutas son un circuito que sube y baja por la misma avenida. Un bus que
+ * va de subida pasa frente al paradero del costado de bajada: "le falta" llegar
+ * a él, pero solo después de ir hasta el final y devolverse. Para quien espera,
+ * ese bus va en contravía y no se debe mostrar. Se descarta cuando su rumbo
+ * actual es casi opuesto (más de 135°) al sentido en que la ruta sale de la parada.
+ * `u` es lo que devolvió ubicarBus.
+ */
+export function vieneHacia(red, ruta, i, u) {
+  const diferencia = Math.abs(((u.rumbo - rumboAlSalir(red, ruta, i) + 540) % 360) - 180);
+  return diferencia <= 135;
+}
+
+/**
  * Hacia dónde van los buses que paran en un paradero.
  * Un paradero de calle suele tener un solo sentido; una estación troncal, dos.
  * Devuelve [{ grados, nombre, flecha, rutas }] del sentido con más rutas al de menos.
@@ -351,6 +366,7 @@ export function llegadas(red, indice, paradero, buses, rumbos = new Map(), maxMi
     // La primera pasada por el paradero que el bus todavía tiene por delante.
     const proxima = veces.find((v) => v.minuto > u.minuto);
     if (!proxima) continue; // ya pasó
+    if (!vieneHacia(red, ruta, proxima.i, u)) continue; // va en sentido contrario: aún tiene que ir y devolverse
     // El dato tiene b[7] segundos de viejo: el bus ya avanzó ese tiempo.
     const falta = Math.max(0, proxima.minuto - u.minuto - (b[7] || 0) / 60);
     if (falta > maxMin) continue;
