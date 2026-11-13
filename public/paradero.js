@@ -68,6 +68,7 @@
     alElegirBus = null;
     filtroViaje = null;
     rumboDeBus = null;
+    busesDudosos = null;
     paradero = resultado = sentido = null;
     mapa.getSource("p-paraderos")?.setData(vacio());
     mapa.getSource("p-radio")?.setData(vacio());
@@ -269,7 +270,9 @@
     const lista = visibles();
     // En el mapa quedan solo esos buses, cada uno con una flecha hacia donde va.
     filtroViaje = new Set(lista.map((l) => l.bus || l.placa));
-    rumboDeBus = new Map(lista.map((l) => [l.bus || l.placa, Math.round(l.rumbo)]));
+    // Los de sentido desconocido no llevan flecha: van en ámbar.
+    rumboDeBus = new Map(lista.filter((l) => !l.dudoso).map((l) => [l.bus || l.placa, Math.round(l.rumbo)]));
+    busesDudosos = new Set(lista.filter((l) => l.dudoso).map((l) => l.bus || l.placa));
     repintar();
     pintarLista();
   }
@@ -286,14 +289,21 @@
 
       const titulo = parte("span", "cod", l.codigo);
       titulo.appendChild(crear("span", { className: "dest", textContent: `  ${l.destino}` }));
-      parte("strong", "tot", falta < 1 ? "llegando" : `~${Math.round(falta)} min`);
+      if (l.dudoso) boton.classList.add("dudosa");
+      // Con signo de pregunta: es el tiempo que tardaría SI viene hacia acá.
+      parte("strong", "tot", (falta < 1 ? "llegando" : `~${Math.round(falta)} min`) + (l.dudoso ? " ?" : ""));
 
       // ¿Alcanzas a llegar caminando antes que el bus?
-      const tarde = falta < paradero.minutos - 1;
+      const tarde = !l.dudoso && falta < paradero.minutos - 1;
       if (tarde) boton.classList.add("tarde");
       const detalle = parte("small", "", "");
-      detalle.appendChild(crear("span", { className: "fle", textContent: V.flecha(l.sentido) }));
-      detalle.append(`sigue hacia el ${V.puntoCardinal(l.sentido)} · ${l.paradas === 1 ? "a 1 parada" : `a ${l.paradas} paradas`} · bus ${l.bus || l.placa}${tarde ? " · llega antes que tú" : ""}`);
+      if (l.dudoso) {
+        detalle.appendChild(crear("span", { className: "duda", textContent: "Sentido por confirmar" }));
+        detalle.append(` · si viene, sigue hacia el ${V.puntoCardinal(l.sentido)} · bus ${l.bus || l.placa}`);
+      } else {
+        detalle.appendChild(crear("span", { className: "fle", textContent: V.flecha(l.sentido) }));
+        detalle.append(`sigue hacia el ${V.puntoCardinal(l.sentido)} · ${l.paradas === 1 ? "a 1 parada" : `a ${l.paradas} paradas`} · bus ${l.bus || l.placa}${tarde ? " · llega antes que tú" : ""}`);
+      }
 
       // Elegir el bus: se resalta esta fila y, en el mapa, el bus queda con un aro blanco.
       const id = l.bus || l.placa;
@@ -311,10 +321,9 @@
     });
     $("p-llegadas").replaceChildren(...filas);
     $("p-nota").hidden = !filas.length;
+    $("p-leyenda").hidden = !visibles().some((l) => l.dudoso);
     if (!/ubicación|fuera/i.test($("p-aviso").textContent)) {
-      const n = resultado.porConfirmar;
-      avisar(filas.length ? (n ? `Hay ${n} bus${n > 1 ? "es" : ""} más cerca cuyo sentido aún se está confirmando.` : "")
-        : n ? "Hay buses cerca, pero aún se está confirmando hacia dónde van. Espera la próxima actualización."
+      avisar(filas.length ? ""
         : sentido ? `No hay buses hacia el ${sentido} que lleguen en los próximos 30 minutos.`
         : "No hay buses que lleguen a este paradero en los próximos 30 minutos.");
     }

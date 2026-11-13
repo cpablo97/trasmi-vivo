@@ -128,7 +128,12 @@ test("en un circuito usa el rumbo y cuenta aparte los buses sin sentido conocido
   const indice = indiceDeRutas(red);
   const paradero = agruparParadas(red).find((g) => g.nombre === "Parada 1"); // b: minutos 2 y 12 del circuito
   const b = bus(4.6075, "circular", "c1"); // entre b y c: minuto 3 (ida) o 11 (vuelta)
-  assert.equal(llegadas(red, indice, paradero, [b]).porConfirmar, 1);
+  // Sin rumbo: se lista como dudoso, con el tiempo que tardaría si viene (1 min de vuelta).
+  const sinRumbo = llegadas(red, indice, paradero, [b]);
+  assert.equal(sinRumbo.porConfirmar, 1);
+  assert.equal(sinRumbo.lista[0].dudoso, true);
+  assert.ok(Math.abs(sinRumbo.lista[0].falta - 1) < 0.05);
+  assert.equal(sinRumbo.lista[0].rumbo, undefined);
   const alSur = llegadas(red, indice, paradero, [b], new Map([["c1", [0, -100]]]));
   assert.ok(Math.abs(alSur.lista[0].falta - 1) < 0.05, `${alSur.lista[0]?.falta}`); // ya viene de vuelta
   const alNorte = llegadas(red, indice, paradero, [b], new Map([["c1", [0, 100]]]));

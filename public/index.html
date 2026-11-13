@@ -91,6 +91,10 @@
   .llegada small { grid-column: 1 / -1; color: var(--suave); font-size: 12.5px; }
   /* El bus llega antes de que alcances a caminar hasta el paradero. */
   .llegada.tarde { opacity: .55; }
+  /* Bus de sentido aún desconocido: mismo ámbar que en el mapa. */
+  .llegada.dudosa { border-color: var(--dual); border-style: dashed; }
+  .llegada.dudosa .tot, .llegada.dudosa .duda { color: var(--dual); }
+  #p-leyenda { font-size: 12.5px; color: var(--dual); } #p-leyenda[hidden] { display: none; }
   /* La fila del bus elegido: mismo blanco que el aro del mapa. */
   .llegada[aria-pressed="true"] { opacity: 1; border-color: #fff; box-shadow: inset 4px 0 0 #fff; background: #232d32; }
   #p-nota { font-size: 11.5px; color: var(--suave); }
@@ -166,6 +170,7 @@
     <button id="p-otro" type="button" hidden></button>
     <div id="p-sentidos" aria-label="Filtrar por sentido"></div>
     <div id="p-aviso" role="status"></div>
+    <div id="p-leyenda" hidden>En ámbar: buses que están cerca pero aún no se sabe hacia dónde van. Pueden venir o estar alejándose; se aclara cuando se muevan, en la próxima actualización.</div>
     <ol id="p-llegadas"></ol>
     <div id="p-nota" hidden>Tiempos estimados con el horario oficial y la posición de cada bus; no tienen en cuenta el tráfico.</div>
     <button id="p-salir" type="button">Salir de mi paradero</button>
@@ -240,6 +245,7 @@ let filtroViaje = null;       // en modo viaje: Set con los ids de los buses que
 let eligiendoEnMapa = false;  // true mientras se espera un toque para marcar origen o destino
 let alLlegarBuses = null;     // función que el modo activo pide llamar con cada feed nuevo
 let rumboDeBus = null;        // en «Mi paradero»: Map id del bus -> grados, para dibujarle una flecha
+let busesDudosos = null;      // en «Mi paradero»: Set de ids de buses cuyo sentido aún no se sabe (se pintan en ámbar)
 let busElegido = null;        // id del bus que la persona tocó (en el mapa o en una lista), o null
 let alElegirBus = null;       // función que el modo activo pide llamar cuando cambia el bus elegido
 let salirDeModo = null;       // cómo salir del modo activo (planear o paradero); solo hay uno a la vez
@@ -278,8 +284,10 @@ mapa.on("load", () => {
     paint: {
       "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 2.2, 14, 5.5, 17, 9],
       // El color sale del campo "sistema" de cada bus.
-      "circle-color": ["match", ["get", "sistema"], ...Object.entries(COLORES).flat(), "#888"],
-      "circle-stroke-color": "#0d1113", "circle-stroke-width": 0.8,
+      // Excepción: los buses "dudosos" (sentido aún desconocido) van huecos, con borde ámbar.
+      "circle-color": ["case", ["has", "dudoso"], "rgba(240,168,0,0.18)", ["match", ["get", "sistema"], ...Object.entries(COLORES).flat(), "#888"]],
+      "circle-stroke-color": ["case", ["has", "dudoso"], "#f0a800", "#0d1113"],
+      "circle-stroke-width": ["case", ["has", "dudoso"], 2.5, 0.8],
     },
   });
 
@@ -566,7 +574,7 @@ function pintarMapa(avance = 1) {
     features.push({
       type: "Feature",
       geometry: { type: "Point", coordinates: pos },
-      properties: { ruta, destino, sistema, bus, placa, hace_s, ...(rumboDeBus?.has(id) && { rumbo: rumboDeBus.get(id) }), ...(id === busElegido && { elegido: true }) },
+      properties: { ruta, destino, sistema, bus, placa, hace_s, ...(rumboDeBus?.has(id) && { rumbo: rumboDeBus.get(id) }), ...(id === busElegido && { elegido: true }), ...(busesDudosos?.has(id) && { dudoso: true }) },
     });
   }
   // Olvidar los buses que ya no vienen en el feed.

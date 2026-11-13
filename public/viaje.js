@@ -122,7 +122,9 @@ export function ubicarBus(red, ruta, pos, rumbo) {
     const alineados = buenos.filter((c) => (c.dx * rx + c.dy * ry) / ((Math.hypot(c.dx, c.dy) || 1) * r) > 0.3);
     if (alineados.length) buenos = alineados;
   }
-  if (disperso(buenos)) return { ambiguo: true, minutos: buenos.map((c) => c.minuto) };
+  const grados = (c) => (Math.atan2(c.dx, c.dy) * 180 / Math.PI + 360) % 360;
+  // Sin poder decidir: se devuelven todas las posiciones posibles, cada una con su rumbo.
+  if (disperso(buenos)) return { ambiguo: true, minutos: buenos.map((c) => c.minuto), candidatos: buenos.map((c) => ({ minuto: c.minuto, i: c.i, rumbo: grados(c) })) };
   const mejor = buenos.reduce((a, b) => (b.d < a.d ? b : a));
   // i = índice de la última parada por la que ya pasó.
   // rumbo = hacia dónde apunta el tramo por el que va (0 = norte, 90 = oriente).
@@ -344,6 +346,8 @@ export function indiceDeRutas(red) {
  * Buses que vienen hacia un paradero, del que llega primero al último.
  * `buses` es la lista de /api/buses; `rumbos` es Map idBus -> [dx, dy].
  * Devuelve { lista: [{ codigo, destino, sistema, bus, placa, pos, falta, paradas, sentido, rumbo }], porConfirmar }.
+ * Los buses cuyo sentido aún no se conoce van en la misma lista con `dudoso: true`
+ * y sin `rumbo`; porConfirmar dice cuántos son.
  */
 export function llegadas(red, indice, paradero, buses, rumbos = new Map(), maxMin = 30) {
   // Por cada ruta, los momentos del recorrido en que pasa por este paradero.
@@ -366,8 +370,24 @@ export function llegadas(red, indice, paradero, buses, rumbos = new Map(), maxMi
     const u = ubicarBus(red, ruta, [b[0], b[1]], rumbos.get(b[5] || b[6]));
     if (!u) continue;
     if (u.ambiguo) {
-      // No se sabe su sentido todavía; cuenta solo si en alguno de los dos podría venir.
-      if (veces.some((v) => u.minutos.some((m) => v.minuto > m && v.minuto - m <= maxMin))) porConfirmar++;
+      // No se sabe su sentido todavía. Se mira cada posición posible: si en alguna viene
+      // hacia el paradero, se lista como "dudoso" con el tiempo que tardaría en ese caso.
+      let mejor = null;
+      for (const c of u.candidatos) {
+        const proxima = veces.find((v) => v.minuto > c.minuto);
+        if (!proxima || !vieneHacia(red, ruta, proxima.i, c)) continue;
+        const falta = Math.max(0, proxima.minuto - c.minuto - (b[7] || 0) / 60);
+        if (falta <= maxMin && (!mejor || falta < mejor.falta)) mejor = { falta, proxima, c };
+      }
+      if (!mejor) continue;
+      porConfirmar++;
+      lista.push({
+        codigo: ruta.c, destino: ruta.d, sistema: ruta.s,
+        bus: b[5], placa: b[6], pos: [b[0], b[1]],
+        falta: mejor.falta, paradas: mejor.proxima.i - mejor.c.i,
+        sentido: rumboAlSalir(red, ruta, mejor.proxima.i),
+        dudoso: true, // puede que venga o que se esté alejando: aún no se sabe
+      });
       continue;
     }
     // La primera pasada por el paradero que el bus todavía tiene por delante.
