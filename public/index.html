@@ -59,6 +59,46 @@
   #sistemas span { color: var(--suave); font-variant-numeric: tabular-nums; }
   input[type=search] { font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--linea);
           background: var(--fondo); color: var(--texto); }
+  /* ----- Planear viaje ----- */
+  /* El panel nunca es más alto que la pantalla; lo que no cabe se desplaza dentro de #mas. */
+  #panel { max-height: calc(100% - 24px); }
+  #mas { overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+  #planear { font: inherit; font-size: 14px; font-weight: 600; color: #fff; background: var(--zonal); border: 0; border-radius: 8px; padding: 9px 10px; cursor: pointer; }
+  #viaje { display: flex; flex-direction: column; gap: 10px; }
+  #viaje[hidden] { display: none; }
+  /* En modo viaje se esconden los controles del mapa general. */
+  #panel.viaje :is(#total, #sistemas, #capas, #ubicar, #aviso-ubicacion, #buscar, #planear) { display: none; }
+  .v-fila { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
+  .v-fila b { color: var(--suave); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; width: 48px; flex: none; }
+  .v-fila span { min-width: 0; overflow-wrap: anywhere; }
+  .v-botones { display: flex; gap: 6px; flex-wrap: wrap; }
+  .v-botones button, #v-salir, #v-sugerencias button { font: inherit; font-size: 13px; color: var(--texto); background: var(--fondo); border: 1px solid var(--linea); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+  .v-botones button[aria-pressed="true"] { border-color: var(--zonal); color: #8fc0ff; }
+  #v-sugerencias { display: flex; flex-direction: column; gap: 4px; }
+  #v-sugerencias button { text-align: left; }
+  .v-radio { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 13px; color: var(--suave); }
+  .v-radio output { color: var(--texto); font-variant-numeric: tabular-nums; }
+  .v-radio input { grid-column: 1 / -1; width: 100%; accent-color: var(--zonal); }
+  #v-aviso { font-size: 13px; color: var(--dual); }
+  #v-aviso:empty { display: none; }
+  #v-opciones { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .opcion { font: inherit; width: 100%; text-align: left; color: var(--texto); background: var(--fondo); border: 1px solid var(--linea); border-radius: 8px;
+            padding: 8px 10px; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; }
+  .opcion[aria-pressed="true"] { border-color: var(--c); box-shadow: inset 3px 0 0 var(--c); }
+  .opcion .cod { font-weight: 700; font-size: 16px; } .opcion .cod::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); margin-right: 6px; }
+  .opcion .dest { color: var(--suave); font-size: 12.5px; font-weight: 400; }
+  .opcion .tot { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .opcion small { grid-column: 1 / -1; color: var(--suave); font-size: 12.5px; line-height: 1.4; }
+  #v-nota { font-size: 11.5px; color: var(--suave); }
+  .destino { width: 22px; height: 22px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: #ff5470; border: 3px solid #fff; }
+  #toque { position: absolute; z-index: 3; left: 50%; bottom: 44px; transform: translateX(-50%); background: var(--zonal); color: #fff; font-size: 14px; font-weight: 600;
+           padding: 8px 14px; border-radius: 999px; white-space: nowrap; pointer-events: none; }
+  @media (max-width: 640px) {
+    /* En móvil, el planeador es una hoja pegada abajo para dejar el mapa arriba. */
+    #panel.viaje { top: auto; bottom: 12px; max-height: 58%; }
+    #panel.viaje :is(#progreso, #proxima) { display: none; }
+    #toque { bottom: auto; top: 16px; }
+  }
   button:focus-visible, input:focus-visible { outline: 2px solid var(--zonal); outline-offset: 2px; }
   footer { color: var(--suave); font-size: 11.5px; }
   .maplibregl-popup-content { background: var(--panel); color: var(--texto); border-radius: 8px; padding: 10px 12px; font: 13px/1.4 system-ui, sans-serif; }
@@ -81,6 +121,26 @@
   <div id="proxima"></div>
   <div id="total"></div>
   <div id="mas">
+  <button id="planear" type="button">Planear viaje</button>
+  <div id="viaje" hidden>
+    <div class="v-fila"><b>Desde</b><span id="v-origen">Sin definir</span></div>
+    <div class="v-botones">
+      <button id="v-ubicacion" type="button">Mi ubicación</button>
+      <button id="v-origen-mapa" type="button" aria-pressed="false">Elegir en el mapa</button>
+    </div>
+    <div class="v-fila"><b>Hacia</b><span id="v-destino">Sin definir</span></div>
+    <input id="v-buscar" type="search" placeholder="Estación o paradero: Museo Nacional…" autocomplete="off" aria-label="Buscar destino por nombre">
+    <div id="v-sugerencias"></div>
+    <div class="v-botones"><button id="v-destino-mapa" type="button" aria-pressed="false">Elegir destino en el mapa</button></div>
+    <label class="v-radio">Camino hasta el paradero <output id="v-ro-txt">500 m</output>
+      <input id="v-ro" type="range" min="300" max="1500" step="100" value="500"></label>
+    <label class="v-radio">Zona de destino <output id="v-rd-txt">1 km</output>
+      <input id="v-rd" type="range" min="500" max="3000" step="250" value="1000"></label>
+    <div id="v-aviso" role="status"></div>
+    <ol id="v-opciones"></ol>
+    <div id="v-nota" hidden>Tiempos estimados con el horario oficial y la posición de los buses; no tienen en cuenta el tráfico. Solo rutas directas.</div>
+    <button id="v-salir" type="button">Salir de planear viaje</button>
+  </div>
   <div id="sistemas"></div>
   <div id="capas">
     <label><input type="checkbox" id="ver-troncales" checked> Troncales</label>
@@ -95,6 +155,7 @@
   <footer>Datos abiertos de TransMilenio S.A. (CC BY-SA 4.0). Proyecto independiente, no afiliado a TransMilenio.</footer>
   </div>
 </div>
+<div id="toque" hidden></div>
 
 <script>
 // ---------- 1. Configuración ----------
@@ -126,6 +187,12 @@ let desde = new Map();       // id del bus -> [lon, lat] al empezar el deslizami
 let inicio = 0;              // momento en que empezó
 let ultimoCuadro = 0;
 
+// Enganches para «Planear viaje» (el código está en planear.js).
+let filtroViaje = null;       // en modo viaje: Set con los ids de los buses que sirven
+let eligiendoEnMapa = false;  // true mientras se espera un toque para marcar origen o destino
+let alLlegarBuses = null;     // función que planear.js pide llamar con cada feed nuevo
+const rumbos = new Map();     // id del bus -> [dx, dy] en metros: hacia dónde se movió la última vez
+
 // ---------- 2. El mapa ----------
 // MapLibre dibuja el mapa base (calles de OpenStreetMap, estilo de CARTO).
 const mapa = new maplibregl.Map({
@@ -155,6 +222,7 @@ mapa.on("load", () => {
   // Al tocar un bus, mostrar sus datos.
   mapa.on("click", "buses", (e) => {
     e.originalEvent.busTocado = true; // para que no se abra también la estación de debajo
+    if (eligiendoEnMapa) return;
     const p = e.features[0].properties;
     const div = document.createElement("div");
     // textContent en vez de innerHTML: nunca se interpreta como código lo que venga del feed.
@@ -223,7 +291,7 @@ async function cargarRed() {
     });
 
     mapa.on("click", "estaciones", (e) => {
-      if (e.originalEvent.busTocado) return;
+      if (e.originalEvent.busTocado || eligiendoEnMapa) return;
       const p = e.features[0].properties;
       const div = document.createElement("div");
       const linea = (etiqueta, texto) => { const el = document.createElement(etiqueta); el.textContent = texto; div.append(el, document.createElement("br")); };
@@ -258,44 +326,54 @@ plegar(angosto.matches);
 // El navegador le pregunta permiso a la persona; la ubicación no sale de su dispositivo:
 // solo se usa aquí para mover el mapa, no se envía a ningún servidor.
 let marcadorYo = null;
-document.getElementById("ubicar").addEventListener("click", () => {
+
+// Pone (o mueve) el punto «estás aquí».
+function ponerYo(pos) {
+  if (!marcadorYo) {
+    const punto = Object.assign(document.createElement("div"), { className: "yo", title: "Estás aquí" });
+    marcadorYo = new maplibregl.Marker({ element: punto }).setLngLat(pos).addTo(mapa);
+  } else marcadorYo.setLngLat(pos);
+}
+
+// Pide la ubicación. Devuelve una promesa: se resuelve con [lon, lat] o se rechaza
+// con un mensaje listo para mostrar. La usan este botón y «Planear viaje».
+function pedirUbicacion() {
+  return new Promise((ok, mal) => {
+    if (!navigator.geolocation) return mal("Este navegador no permite consultar la ubicación.");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => ok([coords.longitude, coords.latitude]),
+      (error) => mal(error.code === error.PERMISSION_DENIED ? "No diste permiso de ubicación. Puedes activarlo en los ajustes del sitio en tu navegador."
+        : error.code === error.TIMEOUT ? "La ubicación tardó demasiado. Inténtalo de nuevo."
+        : "No se pudo obtener tu ubicación. Revisa que el GPS esté activo."),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
+    );
+  });
+}
+// El mapa solo tiene buses en Bogotá y Soacha.
+const fueraDeBogota = ([lon, lat]) => Math.abs(lon + 74.1) > 0.35 || Math.abs(lat - 4.65) > 0.35;
+
+document.getElementById("ubicar").addEventListener("click", async () => {
   const boton = document.getElementById("ubicar"), texto = boton.querySelector("span");
   const aviso = document.getElementById("aviso-ubicacion");
   const avisar = (mensaje) => { aviso.textContent = mensaje; aviso.hidden = !mensaje; };
-  if (!navigator.geolocation) return avisar("Este navegador no permite consultar la ubicación.");
-
   avisar("");
   boton.disabled = true;
   texto.textContent = "Buscando tu ubicación…";
-  const terminar = () => { boton.disabled = false; texto.textContent = "Usar mi ubicación"; };
-
-  navigator.geolocation.getCurrentPosition(
-    // Si funciona: llega la posición.
-    ({ coords }) => {
-      terminar();
-      const aqui = [coords.longitude, coords.latitude];
-      if (!marcadorYo) {
-        const punto = Object.assign(document.createElement("div"), { className: "yo", title: "Estás aquí" });
-        marcadorYo = new maplibregl.Marker({ element: punto }).setLngLat(aqui).addTo(mapa);
-      } else marcadorYo.setLngLat(aqui);
-      // El mapa solo tiene buses en Bogotá y Soacha.
-      const lejos = Math.abs(coords.longitude + 74.1) > 0.35 || Math.abs(coords.latitude - 4.65) > 0.35;
-      // En móvil, plegar el panel para que no tape el punto (salvo que haya un aviso que leer).
-      if (!lejos) plegar(true);
-      // offset baja el centro para que el punto quede en la parte del mapa que el panel no cubre.
-      const tapado = angosto.matches ? document.getElementById("panel").offsetHeight + 12 : 0;
-      mapa.flyTo({ center: aqui, zoom: 15, offset: [0, tapado / 2] });
-      avisar(lejos ? "Estás fuera de Bogotá: aquí no vas a ver buses." : "");
-    },
-    // Si falla: explicar por qué.
-    (error) => {
-      terminar();
-      avisar(error.code === error.PERMISSION_DENIED ? "No diste permiso de ubicación. Puedes activarlo en los ajustes del sitio en tu navegador."
-        : error.code === error.TIMEOUT ? "La ubicación tardó demasiado. Inténtalo de nuevo."
-        : "No se pudo obtener tu ubicación. Revisa que el GPS esté activo.");
-    },
-    { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
-  );
+  try {
+    const aqui = await pedirUbicacion();
+    ponerYo(aqui);
+    const lejos = fueraDeBogota(aqui);
+    // En móvil, plegar el panel para que no tape el punto (salvo que haya un aviso que leer).
+    if (!lejos) plegar(true);
+    // offset baja el centro para que el punto quede en la parte del mapa que el panel no cubre.
+    const tapado = angosto.matches ? document.getElementById("panel").offsetHeight + 12 : 0;
+    mapa.flyTo({ center: aqui, zoom: 15, offset: [0, tapado / 2] });
+    avisar(lejos ? "Estás fuera de Bogotá: aquí no vas a ver buses." : "");
+  } catch (mensaje) {
+    avisar(String(mensaje));
+  }
+  boton.disabled = false;
+  texto.textContent = "Usar mi ubicación";
 });
 
 // Mostrar u ocultar las capas según las casillas del panel.
@@ -328,9 +406,22 @@ async function cargar() {
         recibido = Math.min(ahora, datos.actualizado);
       }
     }
+    if (hayNuevos) {
+      // Rumbo de cada bus: comparar su posición nueva con la del feed anterior.
+      // «Planear viaje» lo usa para saber en qué sentido va un bus en rutas circulares.
+      const antes = new Map(buses.map((b) => [b[5] || b[6], b]));
+      for (const b of datos.buses) {
+        const a = antes.get(b[5] || b[6]);
+        if (!a) continue;
+        const dx = (b[0] - a[0]) * 110950, dy = (b[1] - a[1]) * 110540; // grados -> metros
+        const metros = Math.hypot(dx, dy);
+        if (metros > 30 && metros < 2000) rumbos.set(b[5] || b[6], [dx, dy]);
+      }
+    }
     buses = datos.buses;
     actualizado = datos.actualizado;
     pintarPanel();
+    if (hayNuevos && alLlegarBuses) alLlegarBuses();
     if (hayNuevos) {
       // Guardar dónde está cada bus ahora y arrancar el deslizamiento hacia la posición nueva.
       desde = new Map(dibujado);
@@ -369,7 +460,8 @@ function pintarMapa(avance = 1) {
     const anima = a && Math.abs(a[0] - lon) < SALTO_MAX && Math.abs(a[1] - lat) < SALTO_MAX;
     const pos = anima ? [a[0] + (lon - a[0]) * k, a[1] + (lat - a[1]) * k] : [lon, lat];
     dibujado.set(id, pos);
-    if (apagados.has(sistema) || (filtro && !ruta.toUpperCase().includes(filtro))) continue;
+    // En modo viaje solo se pintan los buses que sirven; si no, los filtros normales.
+    if (filtroViaje ? !filtroViaje.has(id) : apagados.has(sistema) || (filtro && !ruta.toUpperCase().includes(filtro))) continue;
     features.push({
       type: "Feature",
       geometry: { type: "Point", coordinates: pos },
@@ -434,5 +526,6 @@ function pintarEstado() {
 document.getElementById("buscar").addEventListener("input", () => buses.length && refrescar());
 document.addEventListener("visibilitychange", () => !document.hidden && mapa.loaded() && cargar());
 </script>
+<script src="planear.js"></script>
 </body>
 </html>

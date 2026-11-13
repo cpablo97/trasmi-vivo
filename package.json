@@ -6,7 +6,8 @@
   "description": "Mapa de los buses de TransMilenio y el SITP en vivo",
   "scripts": {
     "dev": "node dev.mjs",
-    "rutas": "node scripts/actualizar-rutas.mjs"
+    "rutas": "node scripts/actualizar-rutas.mjs",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "gtfs-realtime-bindings": "^1.1.1"

@@ -33,10 +33,11 @@ export async function leerBuses() {
       v.vehicle?.label || "", // número interno del bus
       v.vehicle?.licensePlate || "",
       ahora - Number(v.timestamp), // hace cuántos segundos reportó
+      v.trip?.routeId || "", // identificador de la ruta en el GTFS; lo usa «Planear viaje»
     ]);
   }
   return {
-    campos: ["lon", "lat", "ruta", "destino", "sistema", "bus", "placa", "hace_s"],
+    campos: ["lon", "lat", "ruta", "destino", "sistema", "bus", "placa", "hace_s", "route_id"],
     actualizado: ahora * 1000,
     buses,
     fuente: "TransMilenio S.A., datos abiertos GTFS Realtime (CC BY-SA 4.0)",
