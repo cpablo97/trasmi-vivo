@@ -18,6 +18,19 @@
            background: var(--panel); border: 1px solid var(--linea); border-radius: 10px; padding: 14px 16px;
            display: flex; flex-direction: column; gap: 10px; }
   h1 { font-size: 18px; margin: 0; }
+  #cabecera { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  #mas { display: flex; flex-direction: column; gap: 10px; }
+  /* El botón de plegar solo existe en pantallas angostas. */
+  #plegar { display: none; font: inherit; font-size: 13px; color: var(--texto); background: var(--fondo); cursor: pointer;
+            border: 1px solid var(--linea); border-radius: 8px; padding: 5px 10px; align-items: center; gap: 6px; }
+  #plegar svg { width: 12px; height: 12px; transition: transform .2s; }
+  #plegar[aria-expanded="true"] svg { transform: rotate(180deg); }
+  @media (max-width: 640px) {
+    #plegar { display: flex; }
+    #panel { padding: 10px 12px; gap: 8px; }
+    #panel.plegado #mas { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { #plegar svg { transition: none; } }
   #estado { color: var(--suave); font-size: 13px; display: flex; align-items: center; gap: 6px; }
   #progreso { height: 4px; border-radius: 2px; background: var(--linea); overflow: hidden; }
   #progreso i { display: block; height: 100%; width: 0; background: var(--alimentador); border-radius: 2px; transition: width 1s linear; }
@@ -56,11 +69,18 @@
 <body>
 <div id="mapa"></div>
 <div id="panel">
-  <h1>Transmi en vivo</h1>
+  <div id="cabecera">
+    <h1>Transmi en vivo</h1>
+    <button id="plegar" type="button" aria-expanded="true" aria-controls="mas">
+      <span>Opciones</span>
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 4l4 4 4-4"/></svg>
+    </button>
+  </div>
   <div id="estado">Cargando buses…</div>
   <div id="progreso" role="progressbar" aria-label="Tiempo hasta la próxima actualización" aria-valuemin="0" aria-valuemax="100"><i></i></div>
   <div id="proxima"></div>
   <div id="total"></div>
+  <div id="mas">
   <div id="sistemas"></div>
   <div id="capas">
     <label><input type="checkbox" id="ver-troncales" checked> Troncales</label>
@@ -73,6 +93,7 @@
   <div id="aviso-ubicacion" hidden></div>
   <input id="buscar" type="search" placeholder="Filtrar por ruta: B10, C25, 16-8…" autocomplete="off" aria-label="Filtrar por ruta">
   <footer>Datos abiertos de TransMilenio S.A. (CC BY-SA 4.0). Proyecto independiente, no afiliado a TransMilenio.</footer>
+  </div>
 </div>
 
 <script>
@@ -221,6 +242,17 @@ async function cargarRed() {
   }
 }
 
+// ---------- 2d. Panel plegable en móvil ----------
+// matchMedia permite preguntar desde JavaScript lo mismo que un @media de CSS.
+const angosto = matchMedia("(max-width: 640px)");
+function plegar(si) {
+  document.getElementById("panel").classList.toggle("plegado", si);
+  document.getElementById("plegar").setAttribute("aria-expanded", String(!si));
+}
+document.getElementById("plegar").addEventListener("click", () => plegar(!document.getElementById("panel").classList.contains("plegado")));
+// En móvil arranca plegado para que se vea el mapa; en pantallas grandes la clase no tiene efecto.
+plegar(angosto.matches);
+
 // ---------- 2c. Mi ubicación ----------
 // navigator.geolocation es la API del navegador para pedir la posición del dispositivo.
 // El navegador le pregunta permiso a la persona; la ubicación no sale de su dispositivo:
@@ -246,9 +278,13 @@ document.getElementById("ubicar").addEventListener("click", () => {
         const punto = Object.assign(document.createElement("div"), { className: "yo", title: "Estás aquí" });
         marcadorYo = new maplibregl.Marker({ element: punto }).setLngLat(aqui).addTo(mapa);
       } else marcadorYo.setLngLat(aqui);
-      mapa.flyTo({ center: aqui, zoom: 15 });
-      // El mapa solo tiene buses en Bogotá y Soacha; avisar si la persona está lejos.
+      // El mapa solo tiene buses en Bogotá y Soacha.
       const lejos = Math.abs(coords.longitude + 74.1) > 0.35 || Math.abs(coords.latitude - 4.65) > 0.35;
+      // En móvil, plegar el panel para que no tape el punto (salvo que haya un aviso que leer).
+      if (!lejos) plegar(true);
+      // offset baja el centro para que el punto quede en la parte del mapa que el panel no cubre.
+      const tapado = angosto.matches ? document.getElementById("panel").offsetHeight + 12 : 0;
+      mapa.flyTo({ center: aqui, zoom: 15, offset: [0, tapado / 2] });
       avisar(lejos ? "Estás fuera de Bogotá: aquí no vas a ver buses." : "");
     },
     // Si falla: explicar por qué.
