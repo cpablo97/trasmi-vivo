@@ -73,6 +73,8 @@ TransMilenio no publica horas de llegada por parada (su feed `tripupdates.pb` so
 2. Para cada ruta que pasa por el paradero, se ubica cada bus dentro del recorrido con su GPS (`ubicarBus`).
 3. Lo que falta = minutos de horario entre la posición del bus y el paradero, menos lo viejo que sea el dato.
 
+**Sentidos y costados.** Cada paradero muestra hacia dónde van sus buses (flecha y punto cardinal), calculado con el tramo que sigue a esa parada en cada ruta. Los paraderos de calle no se agrupan aunque se llamen igual, porque el de cada costado sirve a un sentido distinto; si hay uno cercano para el sentido contrario, la página lo ofrece. El costado se deduce de que los buses circulan y abren por la derecha (buses hacia el norte → costado oriental). En estaciones con dos sentidos se puede filtrar la lista por sentido. En el mapa, los paraderos cercanos y los buses que vienen llevan una flecha.
+
 Tiene los mismos límites que «Planear viaje»: usa el horario y no el tráfico, y en rutas circulares hay que ver moverse al bus para saber su sentido.
 
 ## Mantener los datos al día

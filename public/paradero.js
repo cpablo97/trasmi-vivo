@@ -1,18 +1,21 @@
-// «Mi paradero»: qué buses vienen al paradero más cercano y cuánto les falta.
-// Es la parte de pantalla; los cálculos están en viaje.js (agruparParadas,
-// paraderosCerca, indiceDeRutas, llegadas). Usa de index.html: mapa, buses, rumbos,
-// COLORES, plegar(), angosto, pedirUbicacion(), ponerYo(), pintarMapa(), cargarDatosViaje()
-// y los enganches filtroViaje, eligiendoEnMapa, alLlegarBuses y salirDeModo.
+// «Mi paradero»: qué buses vienen al paradero más cercano, cuánto les falta y
+// hacia dónde van. Es la parte de pantalla; los cálculos están en viaje.js
+// (agruparParadas, paraderosCerca, sentidosDeParadero, llegadas...).
+// Usa de index.html: mapa, buses, rumbos, COLORES, plegar(), angosto,
+// pedirUbicacion(), ponerYo(), pintarMapa(), cargarDatosViaje() y los enganches
+// filtroViaje, rumboDeBus, eligiendoEnMapa, alLlegarBuses y salirDeModo.
 (() => {
   const $ = (id) => document.getElementById(id);
   const MAX_LLEGADAS = 12;
+  const N_CERCANOS = 5;
 
   let V = null, red = null;
   let grupos = null;      // todos los paraderos (vagones de una estación ya agrupados)
   let indice = null;      // qué rutas pasan por cada parada
   let aqui = null;        // [lon, lat] de la persona
-  let cercanos = [];      // los 4 paraderos más cercanos
+  let cercanos = [];      // los paraderos más cercanos, cada uno con sus .sentidos
   let paradero = null;    // el que se está mirando
+  let sentido = null;     // en estaciones con dos sentidos: el que la persona filtró ("norte"...) o null
   let resultado = null;   // { lista, porConfirmar } del último cálculo
   let calculado = 0;      // cuándo se hizo ese cálculo (para descontar el tiempo que pasa)
   let reloj = null;
@@ -20,6 +23,8 @@
 
   const avisar = (texto) => ($("p-aviso").textContent = texto);
   const vacio = () => ({ type: "FeatureCollection", features: [] });
+  const a10 = (m) => `${Math.round(m / 10) * 10} m`;
+  const crear = (etiqueta, props) => Object.assign(document.createElement(etiqueta), props);
 
   // ---------- Entrar y salir ----------
   $("paradero-btn").addEventListener("click", async () => {
@@ -38,13 +43,7 @@
       }
       grupos = V.agruparParadas(red);
       indice = V.indiceDeRutas(red);
-      mapa.addSource("p-paradero", { type: "geojson", data: vacio() });
-      mapa.addLayer({ id: "p-paradero", type: "circle", source: "p-paradero", paint: { "circle-radius": 9, "circle-color": "#fff", "circle-stroke-color": "#4fc3ff", "circle-stroke-width": 4 } }, "buses");
-      mapa.addLayer({
-        id: "p-paradero-nombre", type: "symbol", source: "p-paradero",
-        layout: { "text-field": ["get", "nombre"], "text-size": 13, "text-font": ["Montserrat SemiBold", "Open Sans Bold"], "text-anchor": "top", "text-offset": [0, 1], "text-allow-overlap": true },
-        paint: { "text-color": "#fff", "text-halo-color": "#0d1113", "text-halo-width": 2 },
-      });
+      prepararCapas();
     }
     alLlegarBuses = calcular;
     // Entre un feed y el siguiente los minutos siguen bajando.
@@ -61,11 +60,45 @@
     clearInterval(reloj);
     alLlegarBuses = null;
     filtroViaje = null;
-    paradero = resultado = null;
-    mapa.getSource("p-paradero")?.setData(vacio());
+    rumboDeBus = null;
+    paradero = resultado = sentido = null;
+    mapa.getSource("p-paraderos")?.setData(vacio());
     pintarMapa(1);
   }
   $("p-salir").addEventListener("click", salir);
+
+  // Los paraderos cercanos en el mapa: un círculo cada uno, con una flecha que señala
+  // hacia dónde van sus buses. El elegido se ve más grande y con su nombre.
+  function prepararCapas() {
+    mapa.addSource("p-paraderos", { type: "geojson", data: vacio() });
+    mapa.addLayer({
+      id: "p-paraderos", type: "circle", source: "p-paraderos",
+      paint: {
+        "circle-radius": ["case", ["get", "elegido"], 10, 7],
+        "circle-color": ["case", ["get", "elegido"], "#fff", "#12171a"],
+        "circle-stroke-color": ["case", ["get", "elegido"], "#4fc3ff", "#e8ecea"],
+        "circle-stroke-width": ["case", ["get", "elegido"], 4, 2],
+      },
+    }, "buses");
+    mapa.addLayer({
+      id: "p-paraderos-flecha", type: "symbol", source: "p-paraderos", filter: ["has", "rumbo"],
+      layout: { "icon-image": "flecha", "icon-rotate": ["get", "rumbo"], "icon-rotation-alignment": "map", "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-size": 2 },
+    }, "buses");
+    mapa.addLayer({
+      id: "p-paraderos-nombre", type: "symbol", source: "p-paraderos", filter: ["get", "elegido"],
+      layout: { "text-field": ["get", "nombre"], "text-size": 13, "text-font": ["Montserrat SemiBold", "Open Sans Bold"], "text-anchor": "top", "text-offset": [0, 1.4], "text-allow-overlap": true },
+      paint: { "text-color": "#fff", "text-halo-color": "#0d1113", "text-halo-width": 2 },
+    });
+    // Tocar un paradero en el mapa lo elige.
+    mapa.on("click", "p-paraderos", (e) => {
+      if (eligiendo) return;
+      e.originalEvent.busTocado = true; // que no se abra el globo de la estación de debajo
+      const tocado = cercanos[e.features[0].properties.n];
+      if (tocado) elegirParadero(tocado, false);
+    });
+    mapa.on("mouseenter", "p-paraderos", () => (mapa.getCanvas().style.cursor = "pointer"));
+    mapa.on("mouseleave", "p-paraderos", () => (mapa.getCanvas().style.cursor = eligiendo ? "crosshair" : ""));
+  }
 
   // ---------- Dónde estoy ----------
   async function ubicarme() {
@@ -102,29 +135,83 @@
     aqui = pos;
     ponerYo(pos);
     $("p-origen").textContent = nombre;
-    cercanos = V.paraderosCerca(grupos, pos, 4);
-    elegirParadero(cercanos[0]);
+    cercanos = V.paraderosCerca(grupos, pos, N_CERCANOS);
+    // Hacia dónde van los buses de cada uno.
+    for (const c of cercanos) c.sentidos = V.sentidosDeParadero(red, indice, c);
+    elegirParadero(cercanos[0], true);
   }
 
   // ---------- Qué paradero ----------
-  function elegirParadero(p) {
+  // Texto corto del sentido: "↑ norte" o "↑↓ norte y sur".
+  const flechas = (p) => p.sentidos.map((s) => s.flecha).join("");
+  const hacia = (p) => new Intl.ListFormat("es", { type: "conjunction" }).format(p.sentidos.map((s) => s.nombre)); // "norte, sur y oriente"
+
+  function elegirParadero(p, encuadrar) {
     paradero = p;
-    // Botones para cambiar entre los paraderos cercanos.
+    sentido = null;
+
+    // Botones para cambiar entre los paraderos cercanos, cada uno con su flecha.
     $("p-cercanos").replaceChildren(...cercanos.map((c) => {
-      const boton = Object.assign(document.createElement("button"), { type: "button", textContent: `${c.nombre} · ${Math.round(c.metros / 10) * 10} m` });
+      const boton = crear("button", { type: "button", textContent: `${flechas(c)} ${c.nombre} · ${a10(c.metros)}` });
       boton.setAttribute("aria-pressed", String(c === paradero));
-      boton.onclick = () => elegirParadero(c);
+      boton.setAttribute("aria-label", `${c.nombre}, buses hacia el ${hacia(c)}, a ${a10(c.metros)}`);
+      boton.onclick = () => elegirParadero(c, true);
       return boton;
     }));
+
+    // Título: nombre, costado y sentido.
     const titulo = $("p-titulo");
     titulo.textContent = p.nombre;
-    titulo.appendChild(Object.assign(document.createElement("small"), { textContent: `a ${Math.max(1, Math.round(p.minutos))} min caminando (${Math.round(p.metros / 10) * 10} m)` }));
-    mapa.getSource("p-paradero").setData({ type: "Feature", geometry: { type: "Point", coordinates: p.pos }, properties: { nombre: p.nombre } });
+    const unSentido = p.sentidos.length === 1 ? p.sentidos[0] : null;
+    const donde = !p.sentidos.length ? "Paradero"
+      : p.estacion || !unSentido ? `${p.estacion ? "Estación" : "Paradero"} con buses hacia el ${hacia(p)}`
+      : `Costado ${V.costado(unSentido.grados)} · buses hacia el ${unSentido.nombre}`;
+    titulo.appendChild(crear("small", { textContent: `${donde} · a ${Math.max(1, Math.round(p.minutos))} min caminando (${a10(p.metros)})` }));
+
+    // ¿Hay cerca un paradero que sirva al sentido contrario? Ofrecerlo.
+    const opuesto = unSentido && cercanos.find((c) => c !== p && c.sentidos.length === 1
+      && Math.abs(((c.sentidos[0].grados - unSentido.grados + 540) % 360) - 180) >= 135 // ángulo entre ambos sentidos
+      && V.distancia(c.pos, p.pos) < 400);
+    $("p-otro").hidden = !opuesto;
+    if (opuesto) {
+      $("p-otro").textContent = `¿Vas hacia el ${opuesto.sentidos[0].nombre}? Usa el paradero del otro costado: ${opuesto.nombre}, a ${a10(opuesto.metros)} de ti.`;
+      $("p-otro").onclick = () => elegirParadero(opuesto, true);
+    }
+
+    pintarSentidos();
+    pintarParaderos();
     calcular();
-    // Encuadrar a la persona y al paradero, sin que el panel los tape.
-    const panel = $("panel").getBoundingClientRect();
-    const margen = angosto.matches ? { top: 60, bottom: panel.height + 40, left: 40, right: 40 } : { top: 80, bottom: 80, left: panel.width + 80, right: 80 };
-    mapa.fitBounds(new maplibregl.LngLatBounds(aqui, aqui).extend(p.pos), { padding: margen, maxZoom: 15.5 });
+    if (encuadrar) {
+      // Que se vean la persona y todos los paraderos cercanos, sin que el panel los tape.
+      const caja = new maplibregl.LngLatBounds(aqui, aqui);
+      for (const c of cercanos) caja.extend(c.pos);
+      const panel = $("panel").getBoundingClientRect();
+      const margen = angosto.matches ? { top: 70, bottom: panel.height + 50, left: 50, right: 50 } : { top: 90, bottom: 90, left: panel.width + 90, right: 90 };
+      mapa.fitBounds(caja, { padding: margen, maxZoom: 16.5 });
+    }
+  }
+
+  // En una estación con buses en dos sentidos: botones para ver solo uno.
+  function pintarSentidos() {
+    const varios = paradero.sentidos.length > 1;
+    $("p-sentidos").replaceChildren(...(varios ? [null, ...paradero.sentidos] : []).map((s) => {
+      const boton = crear("button", { type: "button", textContent: s ? `${s.flecha} Hacia el ${s.nombre}` : "Todos" });
+      boton.setAttribute("aria-pressed", String((s?.nombre ?? null) === sentido));
+      boton.onclick = () => { sentido = s?.nombre ?? null; pintarSentidos(); filtrar(); };
+      return boton;
+    }));
+  }
+
+  function pintarParaderos() {
+    mapa.getSource("p-paraderos").setData({
+      type: "FeatureCollection",
+      features: cercanos.map((c, n) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: c.pos },
+        // rumbo solo si el paradero tiene un único sentido: es lo que dibuja la flecha.
+        properties: { n, nombre: c.nombre, elegido: c === paradero, ...(c.sentidos.length === 1 && { rumbo: Math.round(c.sentidos[0].grados) }) },
+      })),
+    });
   }
 
   // ---------- Qué buses vienen ----------
@@ -133,8 +220,18 @@
     if (!paradero) return;
     resultado = V.llegadas(red, indice, paradero, buses, rumbos);
     calculado = Date.now();
-    // En el mapa quedan solo los buses de la lista.
-    filtroViaje = new Set(resultado.lista.slice(0, MAX_LLEGADAS).map((l) => l.bus || l.placa));
+    filtrar();
+  }
+
+  // Las llegadas que se muestran: las del sentido elegido (si hay filtro), hasta el máximo.
+  // Cada llegada pertenece al sentido del paradero que más se parece a su rumbo.
+  const visibles = () => resultado.lista.filter((l) => !sentido || V.sentidoMasCercano(paradero.sentidos, l.sentido)?.nombre === sentido).slice(0, MAX_LLEGADAS);
+
+  function filtrar() {
+    const lista = visibles();
+    // En el mapa quedan solo esos buses, cada uno con una flecha hacia donde va.
+    filtroViaje = new Set(lista.map((l) => l.bus || l.placa));
+    rumboDeBus = new Map(lista.map((l) => [l.bus || l.placa, Math.round(l.rumbo)]));
     pintarMapa(1);
     pintarLista();
   }
@@ -143,20 +240,22 @@
     if (!resultado) return;
     // Minutos que han pasado desde el cálculo: los buses siguieron avanzando.
     const pasado = (Date.now() - calculado) / 60000;
-    const filas = resultado.lista.slice(0, MAX_LLEGADAS).map((l) => {
+    const filas = visibles().map((l) => {
       const falta = Math.max(0, l.falta - pasado);
-      const boton = Object.assign(document.createElement("button"), { type: "button", className: "llegada" });
+      const boton = crear("button", { type: "button", className: "llegada" });
       boton.style.setProperty("--c", COLORES[l.sistema] || "#888");
-      const parte = (etiqueta, clase, texto) => boton.appendChild(Object.assign(document.createElement(etiqueta), { className: clase, textContent: texto }));
+      const parte = (etiqueta, clase, texto) => boton.appendChild(crear(etiqueta, { className: clase, textContent: texto }));
 
       const titulo = parte("span", "cod", l.codigo);
-      titulo.appendChild(Object.assign(document.createElement("span"), { className: "dest", textContent: `  ${l.destino}` }));
+      titulo.appendChild(crear("span", { className: "dest", textContent: `  ${l.destino}` }));
       parte("strong", "tot", falta < 1 ? "llegando" : `~${Math.round(falta)} min`);
 
       // ¿Alcanzas a llegar caminando antes que el bus?
       const tarde = falta < paradero.minutos - 1;
       if (tarde) boton.classList.add("tarde");
-      parte("small", "", `${l.paradas === 1 ? "a 1 parada" : `a ${l.paradas} paradas`} · bus ${l.bus || l.placa}${tarde ? " · llega antes que tú" : ""}`);
+      const detalle = parte("small", "", "");
+      detalle.appendChild(crear("span", { className: "fle", textContent: V.flecha(l.sentido) }));
+      detalle.append(`sigue hacia el ${V.puntoCardinal(l.sentido)} · ${l.paradas === 1 ? "a 1 parada" : `a ${l.paradas} paradas`} · bus ${l.bus || l.placa}${tarde ? " · llega antes que tú" : ""}`);
 
       boton.onclick = () => { plegar(true); mapa.flyTo({ center: l.pos, zoom: 15.5 }); };
       const li = document.createElement("li");
@@ -166,8 +265,10 @@
     $("p-llegadas").replaceChildren(...filas);
     $("p-nota").hidden = !filas.length;
     if (!/ubicación|fuera/i.test($("p-aviso").textContent)) {
-      avisar(filas.length ? (resultado.porConfirmar ? `Hay ${resultado.porConfirmar} bus${resultado.porConfirmar > 1 ? "es" : ""} más cerca cuyo sentido aún se está confirmando.` : "")
-        : resultado.porConfirmar ? "Hay buses cerca, pero aún se está confirmando hacia dónde van. Espera la próxima actualización."
+      const n = resultado.porConfirmar;
+      avisar(filas.length ? (n ? `Hay ${n} bus${n > 1 ? "es" : ""} más cerca cuyo sentido aún se está confirmando.` : "")
+        : n ? "Hay buses cerca, pero aún se está confirmando hacia dónde van. Espera la próxima actualización."
+        : sentido ? `No hay buses hacia el ${sentido} que lleguen en los próximos 30 minutos.`
         : "No hay buses que lleguen a este paradero en los próximos 30 minutos.");
     }
   }

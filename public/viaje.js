@@ -125,7 +125,8 @@ export function ubicarBus(red, ruta, pos, rumbo) {
   if (disperso(buenos)) return { ambiguo: true, minutos: buenos.map((c) => c.minuto) };
   const mejor = buenos.reduce((a, b) => (b.d < a.d ? b : a));
   // i = índice de la última parada por la que ya pasó.
-  return { minuto: mejor.minuto, i: mejor.i };
+  // rumbo = hacia dónde apunta el tramo por el que va (0 = norte, 90 = oriente).
+  return { minuto: mejor.minuto, i: mejor.i, rumbo: (Math.atan2(mejor.dx, mejor.dy) * 180 / Math.PI + 360) % 360 };
 }
 
 /**
@@ -195,24 +196,105 @@ export function circulo([lon, lat], radio, puntos = 64) {
 // ---------------------------------------------------------------------------
 
 /**
- * Junta en un solo "paradero" los vagones de una misma estación y los paraderos
- * gemelos. Dos paradas van juntas si tienen el mismo nombre limpio y están a
- * menos de 300 m (hay nombres repetidos en barrios distintos).
- * Devuelve [{ nombre, pos: [lon, lat], ids: [idParada, ...] }].
+ * Lista de "paraderos" entre los que la persona puede elegir.
+ *
+ * - Los vagones de una estación troncal ("Museo Nacional A - 2 ó 5", "... B - 7")
+ *   se juntan en un solo paradero: a la estación se entra una sola vez.
+ * - Los paraderos de calle NO se juntan aunque se llamen igual: el de cada costado
+ *   sirve a buses que van en sentidos opuestos, y hay que poder elegir entre ellos.
+ *
+ * Devuelve [{ nombre, pos: [lon, lat], ids: [idParada, ...], estacion: true|false }].
  */
 export function agruparParadas(red) {
-  const porNombre = new Map();
+  const estaciones = new Map(); // nombre limpio -> grupos de vagones
+  const paraderos = [];
   for (const id in red.paradas) {
     const [lon, lat, nombre] = red.paradas[id];
     const limpio = nombreLimpio(nombre);
+    if (limpio === nombre) { // no tenía sufijo de vagón: es un paradero de calle
+      paraderos.push({ nombre, pos: [lon, lat], ids: [id], estacion: false });
+      continue;
+    }
     const clave = simple(limpio);
-    if (!porNombre.has(clave)) porNombre.set(clave, []);
-    const grupos = porNombre.get(clave);
+    if (!estaciones.has(clave)) estaciones.set(clave, []);
+    const grupos = estaciones.get(clave);
+    // Mismo nombre y a menos de 300 m: es la misma estación.
     let grupo = grupos.find((g) => distancia(g.pos, [lon, lat]) < 300);
-    if (!grupo) grupos.push((grupo = { nombre: limpio, pos: [lon, lat], ids: [] }));
+    if (!grupo) grupos.push((grupo = { nombre: limpio, pos: [lon, lat], ids: [], estacion: true }));
     grupo.ids.push(id);
   }
-  return [...porNombre.values()].flat();
+  return [...estaciones.values()].flat().concat(paraderos);
+}
+
+// ---------- Sentidos y costados ----------
+
+/** Rumbo de a hacia b en grados: 0 = norte, 90 = oriente, 180 = sur, 270 = occidente. */
+export function rumboEntre(a, b) {
+  const [ax, ay] = plano(a), [bx, by] = plano(b);
+  return (Math.atan2(bx - ax, by - ay) * 180 / Math.PI + 360) % 360;
+}
+
+const CARDINALES = ["norte", "nororiente", "oriente", "suroriente", "sur", "suroccidente", "occidente", "noroccidente"];
+const FLECHAS = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"];
+const octante = (grados) => Math.round((((grados % 360) + 360) % 360) / 45) % 8;
+
+/** "norte", "suroriente"... para un rumbo en grados. */
+export const puntoCardinal = (grados) => CARDINALES[octante(grados)];
+/** La flecha que corresponde a ese rumbo. */
+export const flecha = (grados) => FLECHAS[octante(grados)];
+
+/**
+ * En qué costado de la vía queda un paradero cuyos buses van hacia `grados`.
+ * En Colombia se circula por la derecha y los buses abren a la derecha, así que
+ * el paradero está a la derecha del sentido de marcha: si los buses van al norte,
+ * el paradero queda en el costado oriental.
+ */
+export const costado = (grados) => ["oriental", "suroriental", "sur", "suroccidental", "occidental", "noroccidental", "norte", "nororiental"][octante(grados)];
+
+/** Hacia dónde sale una ruta después de la parada número i de su recorrido. */
+function rumboAlSalir(red, ruta, i) {
+  const p = ruta.p;
+  // En la última parada no hay "siguiente": se usa el tramo con el que llega.
+  const [a, b] = i < p.length - 1 ? [i, i + 1] : [i - 1, i];
+  return rumboEntre(red.paradas[p[a][0]], red.paradas[p[b][0]]);
+}
+
+/**
+ * Hacia dónde van los buses que paran en un paradero.
+ * Un paradero de calle suele tener un solo sentido; una estación troncal, dos.
+ * Devuelve [{ grados, nombre, flecha, rutas }] del sentido con más rutas al de menos.
+ */
+export function sentidosDeParadero(red, indice, paradero) {
+  const porOctante = new Map();
+  let total = 0;
+  for (const id of paradero.ids) {
+    for (const { ruta, i } of indice.get(id) || []) {
+      const o = octante(rumboAlSalir(red, red.rutas[ruta], i));
+      porOctante.set(o, (porOctante.get(o) || 0) + 1);
+      total++;
+    }
+  }
+  // "Sur" y "suroccidente" en una misma avenida son el mismo sentido para quien espera
+  // el bus: los rumbos vecinos se juntan con el que más rutas tiene.
+  const grupos = [];
+  for (const [o, n] of [...porOctante].sort((a, b) => b[1] - a[1])) {
+    const vecino = grupos.find((g) => [1, 7].includes((g.principal - o + 8) % 8));
+    if (vecino) { vecino.rutas += n; vecino.x += n * Math.sin(o * Math.PI / 4); vecino.y += n * Math.cos(o * Math.PI / 4); }
+    else grupos.push({ principal: o, rutas: n, x: n * Math.sin(o * Math.PI / 4), y: n * Math.cos(o * Math.PI / 4) });
+  }
+  return grupos
+    .filter((g) => g.rutas / total >= 0.2) // ignorar sentidos que solo toma alguna ruta suelta
+    .sort((a, b) => b.rutas - a.rutas)
+    .map((g) => {
+      const grados = (Math.atan2(g.x, g.y) * 180 / Math.PI + 360) % 360; // promedio del grupo
+      return { grados, nombre: puntoCardinal(grados), flecha: flecha(grados), rutas: g.rutas };
+    });
+}
+
+/** De una lista de sentidos, el más parecido a un rumbo en grados. */
+export function sentidoMasCercano(sentidos, grados) {
+  const diferencia = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
+  return sentidos.reduce((mejor, s) => (!mejor || diferencia(s.grados, grados) < diferencia(mejor.grados, grados) ? s : mejor), null);
 }
 
 /** Los `n` paraderos más cercanos a un punto, con metros y minutos a pie. */
@@ -239,7 +321,7 @@ export function indiceDeRutas(red) {
 /**
  * Buses que vienen hacia un paradero, del que llega primero al último.
  * `buses` es la lista de /api/buses; `rumbos` es Map idBus -> [dx, dy].
- * Devuelve { lista: [{ codigo, destino, sistema, bus, placa, pos, falta, paradas }], porConfirmar }.
+ * Devuelve { lista: [{ codigo, destino, sistema, bus, placa, pos, falta, paradas, sentido, rumbo }], porConfirmar }.
  */
 export function llegadas(red, indice, paradero, buses, rumbos = new Map(), maxMin = 30) {
   // Por cada ruta, los momentos del recorrido en que pasa por este paradero.
@@ -277,6 +359,8 @@ export function llegadas(red, indice, paradero, buses, rumbos = new Map(), maxMi
       bus: b[5], placa: b[6], pos: [b[0], b[1]],
       falta,                    // minutos de horario hasta el paradero
       paradas: proxima.i - u.i, // cuántas paradas le faltan, contando esta
+      sentido: rumboAlSalir(red, ruta, proxima.i), // hacia dónde sigue después de este paradero
+      rumbo: u.rumbo,           // hacia dónde va el bus en este momento
     });
   }
   lista.sort((a, b) => a.falta - b.falta);

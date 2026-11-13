@@ -74,6 +74,12 @@
   #paradero[hidden] { display: none; }
   #p-titulo { font-size: 16px; font-weight: 700; } #p-titulo small { display: block; font-weight: 400; font-size: 13px; color: var(--suave); }
   #p-titulo:empty { display: none; }
+  #p-otro, #p-sentidos button { font: inherit; font-size: 13px; color: var(--texto); background: var(--fondo); border: 1px solid var(--linea); border-radius: 8px; padding: 6px 10px; cursor: pointer; text-align: left; }
+  #p-otro { border-color: var(--dual); }
+  #p-sentidos { display: flex; gap: 6px; flex-wrap: wrap; }
+  #p-sentidos:empty { display: none; }
+  #p-sentidos button[aria-pressed="true"] { border-color: var(--zonal); color: #8fc0ff; }
+  .llegada .fle { display: inline-block; width: 1.2em; font-weight: 700; color: var(--texto); }
   #p-aviso { font-size: 13px; color: var(--dual); } #p-aviso:empty { display: none; }
   #p-llegadas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .llegada { font: inherit; width: 100%; text-align: left; color: var(--texto); background: var(--fondo); border: 1px solid var(--linea); border-radius: 8px;
@@ -151,6 +157,8 @@
     </div>
     <div id="p-cercanos" class="v-botones" aria-label="Paraderos cercanos"></div>
     <div id="p-titulo"></div>
+    <button id="p-otro" type="button" hidden></button>
+    <div id="p-sentidos" aria-label="Filtrar por sentido"></div>
     <div id="p-aviso" role="status"></div>
     <ol id="p-llegadas"></ol>
     <div id="p-nota" hidden>Tiempos estimados con el horario oficial y la posición de cada bus; no tienen en cuenta el tráfico.</div>
@@ -225,6 +233,7 @@ let ultimoCuadro = 0;
 let filtroViaje = null;       // en modo viaje: Set con los ids de los buses que sirven
 let eligiendoEnMapa = false;  // true mientras se espera un toque para marcar origen o destino
 let alLlegarBuses = null;     // función que el modo activo pide llamar con cada feed nuevo
+let rumboDeBus = null;        // en «Mi paradero»: Map id del bus -> grados, para dibujarle una flecha
 let salirDeModo = null;       // cómo salir del modo activo (planear o paradero); solo hay uno a la vez
 
 // Los dos modos usan los mismos datos: la lógica (viaje.js) y la red de rutas y
@@ -264,6 +273,21 @@ mapa.on("load", () => {
       "circle-color": ["match", ["get", "sistema"], ...Object.entries(COLORES).flat(), "#888"],
       "circle-stroke-color": "#0d1113", "circle-stroke-width": 0.8,
     },
+  });
+
+  // Flecha de sentido. Se dibuja una vez en un <canvas> y se registra como imagen del mapa.
+  // El triángulo queda en el borde de arriba: al centrar la imagen sobre un punto y girarla,
+  // la flecha "orbita" alrededor del punto y señala hacia dónde va.
+  const lienzo = Object.assign(document.createElement("canvas"), { width: 64, height: 64 });
+  const g = lienzo.getContext("2d");
+  g.beginPath(); g.moveTo(32, 3); g.lineTo(43, 19); g.lineTo(21, 19); g.closePath();
+  g.fillStyle = "#fff"; g.fill(); g.lineWidth = 3; g.strokeStyle = "#0d1113"; g.stroke();
+  mapa.addImage("flecha", g.getImageData(0, 0, 64, 64), { pixelRatio: 2 });
+  // Solo llevan flecha los buses que tienen la propiedad "rumbo" (los de «Mi paradero»).
+  mapa.addLayer({
+    id: "buses-rumbo", type: "symbol", source: "buses", filter: ["has", "rumbo"],
+    layout: { "icon-image": "flecha", "icon-rotate": ["get", "rumbo"], "icon-rotation-alignment": "map", "icon-allow-overlap": true, "icon-ignore-placement": true,
+              "icon-size": ["interpolate", ["linear"], ["zoom"], 11, 0.6, 15, 1] },
   });
 
   // Al tocar un bus, mostrar sus datos.
@@ -512,7 +536,7 @@ function pintarMapa(avance = 1) {
     features.push({
       type: "Feature",
       geometry: { type: "Point", coordinates: pos },
-      properties: { ruta, destino, sistema, bus, placa, hace_s },
+      properties: { ruta, destino, sistema, bus, placa, hace_s, ...(rumboDeBus?.has(id) && { rumbo: rumboDeBus.get(id) }) },
     });
   }
   // Olvidar los buses que ya no vienen en el feed.

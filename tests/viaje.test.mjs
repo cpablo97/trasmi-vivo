@@ -1,7 +1,7 @@
 // Pruebas de la lógica de «Planear viaje» con una red de juguete.  npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { distancia, buscarOpciones, ubicarBus, estimar, buscarParadas, agruparParadas, paraderosCerca, indiceDeRutas, llegadas } from "../public/viaje.js";
+import { distancia, buscarOpciones, ubicarBus, estimar, buscarParadas, agruparParadas, paraderosCerca, indiceDeRutas, llegadas, sentidosDeParadero, sentidoMasCercano, puntoCardinal, costado, rumboEntre } from "../public/viaje.js";
 
 // Paradas sobre una avenida de sur a norte, una cada ~550 m (0.005° de latitud).
 const P = (n) => [-74.1, 4.6 + n * 0.005, `Parada ${n}`];
@@ -133,4 +133,56 @@ test("en un circuito usa el rumbo y cuenta aparte los buses sin sentido conocido
   assert.ok(Math.abs(alSur.lista[0].falta - 1) < 0.05, `${alSur.lista[0]?.falta}`); // ya viene de vuelta
   const alNorte = llegadas(red, indice, paradero, [b], new Map([["c1", [0, 100]]]));
   assert.ok(Math.abs(alNorte.lista[0].falta - 9) < 0.05); // acaba de pasar: sube hasta d y vuelve
+});
+
+// ---------- Sentidos y costados ----------
+test("no junta paraderos de calle aunque se llamen igual", () => {
+  const r = { paradas: { 1: [-74.1, 4.6, "Calle 100"], 2: [-74.1003, 4.6, "Calle 100"] } }; // uno por costado
+  assert.equal(agruparParadas(r).length, 2);
+});
+
+test("rumbos, puntos cardinales y costados", () => {
+  assert.ok(Math.abs(rumboEntre(en(0), en(1))) < 0.01); // de sur a norte
+  assert.equal(puntoCardinal(0), "norte");
+  assert.equal(puntoCardinal(200), "sur");
+  assert.equal(puntoCardinal(315), "noroccidente");
+  // Se circula por la derecha: el paradero queda a la derecha del sentido de marcha.
+  assert.equal(costado(0), "oriental");
+  assert.equal(costado(180), "occidental");
+  assert.equal(costado(90), "sur");
+  assert.equal(costado(270), "norte");
+  assert.equal(costado(225), "noroccidental"); // buses hacia el suroccidente
+});
+
+test("dice hacia dónde van los buses de un paradero", () => {
+  const unSentido = { paradas: red.paradas, rutas: { norte: red.rutas.norte } };
+  const g1 = agruparParadas(unSentido).find((g) => g.nombre === "Parada 2");
+  assert.deepEqual(sentidosDeParadero(unSentido, indiceDeRutas(unSentido), g1).map((s) => s.nombre), ["norte"]);
+  // Con rutas en los dos sentidos por la misma parada, salen los dos.
+  const g2 = agruparParadas(red).find((g) => g.nombre === "Parada 2");
+  assert.deepEqual(sentidosDeParadero(red, indiceDeRutas(red), g2).map((s) => s.nombre).sort(), ["norte", "sur"]);
+});
+
+test("cada llegada trae el sentido en que sigue y el rumbo del bus", () => {
+  const paradero = agruparParadas(red).find((g) => g.nombre === "Parada 2");
+  const { lista } = llegadas(red, indiceDeRutas(red), paradero, [bus(4.6075, "norte", "n"), bus(4.6175, "sur", "s")]);
+  assert.equal(puntoCardinal(lista.find((l) => l.bus === "n").sentido), "norte");
+  assert.equal(puntoCardinal(lista.find((l) => l.bus === "s").sentido), "sur");
+  assert.equal(puntoCardinal(lista.find((l) => l.bus === "s").rumbo), "sur");
+});
+
+test("junta rumbos vecinos en un solo sentido y asigna cada llegada al más parecido", () => {
+  // Una avenida que va al norte con una curva: unas rutas salen al norte y otras al nororiente.
+  const r = {
+    paradas: { x: [-74.1, 4.6, "X"], n: [-74.1, 4.605, "N"], ne: [-74.096, 4.604, "NE"], s: [-74.1, 4.595, "S"] },
+    rutas: {
+      r1: { c: "1", d: "", s: "", p: [["x", 0], ["n", 2]] }, r2: { c: "2", d: "", s: "", p: [["x", 0], ["n", 2]] },
+      r3: { c: "3", d: "", s: "", p: [["x", 0], ["ne", 2]] }, r4: { c: "4", d: "", s: "", p: [["x", 0], ["s", 2]] },
+    },
+  };
+  const paradero = agruparParadas(r).find((g) => g.nombre === "X");
+  const sentidos = sentidosDeParadero(r, indiceDeRutas(r), paradero);
+  assert.deepEqual(sentidos.map((s) => [s.nombre, s.rutas]), [["norte", 3], ["sur", 1]]);
+  assert.equal(sentidoMasCercano(sentidos, 60).nombre, "norte");
+  assert.equal(sentidoMasCercano(sentidos, 200).nombre, "sur");
 });
