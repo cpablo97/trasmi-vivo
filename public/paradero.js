@@ -46,6 +46,11 @@
       prepararCapas();
     }
     alLlegarBuses = calcular;
+    // Si el bus se elige tocándolo en el mapa, resaltar su fila y traerla a la vista.
+    alElegirBus = (id) => {
+      pintarLista();
+      if (id) document.querySelector(`.llegada[data-bus="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" });
+    };
     // Entre un feed y el siguiente los minutos siguen bajando.
     reloj = setInterval(pintarLista, 15000);
     if (marcadorYo) ponerAqui(marcadorYo.getLngLat().toArray(), "Tu ubicación");
@@ -59,6 +64,7 @@
     elegirEnMapa(false);
     clearInterval(reloj);
     alLlegarBuses = null;
+    alElegirBus = null;
     filtroViaje = null;
     rumboDeBus = null;
     paradero = resultado = sentido = null;
@@ -257,7 +263,16 @@
       detalle.appendChild(crear("span", { className: "fle", textContent: V.flecha(l.sentido) }));
       detalle.append(`sigue hacia el ${V.puntoCardinal(l.sentido)} · ${l.paradas === 1 ? "a 1 parada" : `a ${l.paradas} paradas`} · bus ${l.bus || l.placa}${tarde ? " · llega antes que tú" : ""}`);
 
-      boton.onclick = () => { plegar(true); mapa.flyTo({ center: l.pos, zoom: 15.5 }); };
+      // Elegir el bus: se resalta esta fila y, en el mapa, el bus queda con un aro blanco.
+      const id = l.bus || l.placa;
+      boton.dataset.bus = id;
+      boton.setAttribute("aria-pressed", String(id === busElegido));
+      boton.onclick = () => {
+        if (id === busElegido) return elegirBus(null); // tocar de nuevo lo suelta
+        elegirBus(id);
+        plegar(true);
+        mapa.flyTo({ center: l.pos, zoom: 15.5 });
+      };
       const li = document.createElement("li");
       li.appendChild(boton);
       return li;
