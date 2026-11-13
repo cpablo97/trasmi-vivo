@@ -55,6 +55,15 @@ const apagados = new Set(); // sistemas que el usuario ocultó
 let buses = [];             // la última respuesta de /api/buses
 let actualizado = 0;
 
+// Para deslizar: dónde está dibujado cada bus ahora y desde dónde arranca el movimiento.
+const DESLIZAR_MS = 4000;    // cuánto dura el deslizamiento
+const SALTO_MAX = 0.02;      // ~2 km: si "se movió" más que esto, es un salto del GPS y no se anima
+const sinAnimar = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const dibujado = new Map();  // id del bus -> [lon, lat] que se ve en pantalla
+let desde = new Map();       // id del bus -> [lon, lat] al empezar el deslizamiento
+let inicio = 0;              // momento en que empezó
+let ultimoCuadro = 0;
+
 // ---------- 2. El mapa ----------
 // MapLibre dibuja el mapa base (calles de OpenStreetMap, estilo de CARTO).
 const mapa = new maplibregl.Map({
@@ -105,33 +114,69 @@ async function cargar() {
     const r = await fetch("/api/buses");
     const datos = await r.json();
     if (!r.ok) throw new Error(datos.error || `HTTP ${r.status}`);
+    const hayNuevos = datos.actualizado !== actualizado;
     buses = datos.buses;
     actualizado = datos.actualizado;
-    pintar();
+    pintarPanel();
+    if (hayNuevos) {
+      // Guardar dónde está cada bus ahora y arrancar el deslizamiento hacia la posición nueva.
+      desde = new Map(dibujado);
+      inicio = performance.now();
+      requestAnimationFrame(cuadro);
+    }
   } catch (error) {
     document.getElementById("estado").textContent = `Sin conexión con el feed (${error.message}). Reintentando…`;
     document.getElementById("estado").style.setProperty("--color", "#e0222b");
   }
 }
 
-// ---------- 4. Pasar los datos al mapa y al panel ----------
-function pintar() {
+// ---------- 4. Deslizar los buses ----------
+// El navegador llama a cuadro() antes de cada repintado de pantalla (unas 60 veces por segundo).
+function cuadro(ahora) {
+  const avance = sinAnimar ? 1 : Math.min(1, (ahora - inicio) / DESLIZAR_MS);
+  // Con 4.000 puntos basta redibujar unas 25 veces por segundo; el último cuadro siempre se pinta.
+  if (avance === 1 || ahora - ultimoCuadro > 40) { ultimoCuadro = ahora; pintarMapa(avance); }
+  if (avance < 1) requestAnimationFrame(cuadro);
+}
+
+// avance va de 0 (posición vieja) a 1 (posición nueva).
+function pintarMapa(avance = 1) {
+  // Suavizado: arranca rápido y frena al llegar, en vez de moverse a velocidad constante.
+  const k = 1 - Math.pow(1 - avance, 3);
   const filtro = document.getElementById("buscar").value.trim().toUpperCase();
-  const visibles = buses.filter((b) => !apagados.has(b[4]) && (!filtro || b[2].toUpperCase().includes(filtro)));
+  const features = [];
+  const vistos = new Set();
 
   // Cada bus llega como [lon, lat, ruta, destino, sistema, bus, placa, hace_s].
-  mapa.getSource("buses").setData({
-    type: "FeatureCollection",
-    features: visibles.map(([lon, lat, ruta, destino, sistema, bus, placa, hace_s]) => ({
+  for (const [lon, lat, ruta, destino, sistema, bus, placa, hace_s] of buses) {
+    const id = bus || placa;
+    vistos.add(id);
+    const a = desde.get(id);
+    // Sin posición anterior (bus recién aparecido) o salto enorme: va directo a su sitio.
+    const anima = a && Math.abs(a[0] - lon) < SALTO_MAX && Math.abs(a[1] - lat) < SALTO_MAX;
+    const pos = anima ? [a[0] + (lon - a[0]) * k, a[1] + (lat - a[1]) * k] : [lon, lat];
+    dibujado.set(id, pos);
+    if (apagados.has(sistema) || (filtro && !ruta.toUpperCase().includes(filtro))) continue;
+    features.push({
       type: "Feature",
-      geometry: { type: "Point", coordinates: [lon, lat] },
+      geometry: { type: "Point", coordinates: pos },
       properties: { ruta, destino, sistema, bus, placa, hace_s },
-    })),
-  });
+    });
+  }
+  // Olvidar los buses que ya no vienen en el feed.
+  for (const id of dibujado.keys()) if (!vistos.has(id)) dibujado.delete(id);
 
+  mapa.getSource("buses").setData({ type: "FeatureCollection", features });
+  return features.length;
+}
+
+// ---------- 5. El panel: totales y botones por sistema ----------
+function pintarPanel() {
+  const filtro = document.getElementById("buscar").value.trim().toUpperCase();
+  const visibles = buses.filter((b) => !apagados.has(b[4]) && (!filtro || b[2].toUpperCase().includes(filtro))).length;
   const cuenta = {};
   for (const b of buses) cuenta[b[4]] = (cuenta[b[4]] || 0) + 1;
-  document.getElementById("total").innerHTML = `<b>${visibles.length.toLocaleString("es-CO")}</b> buses${filtro || apagados.size ? " con este filtro" : " en vía"}`;
+  document.getElementById("total").innerHTML = `<b>${visibles.toLocaleString("es-CO")}</b> buses${filtro || apagados.size ? " con este filtro" : " en vía"}`;
 
   const cont = document.getElementById("sistemas");
   cont.replaceChildren(...Object.keys(COLORES).filter((s) => cuenta[s]).map((s) => {
@@ -139,10 +184,16 @@ function pintar() {
     boton.style.setProperty("--c", COLORES[s]);
     boton.setAttribute("aria-pressed", String(!apagados.has(s)));
     boton.append(s, Object.assign(document.createElement("span"), { textContent: cuenta[s].toLocaleString("es-CO") }));
-    boton.onclick = () => { apagados.has(s) ? apagados.delete(s) : apagados.add(s); pintar(); };
+    boton.onclick = () => { apagados.has(s) ? apagados.delete(s) : apagados.add(s); refrescar(); };
     return boton;
   }));
   pintarEstado();
+}
+
+// Cuando cambia un filtro: repintar sin reiniciar el deslizamiento.
+function refrescar() {
+  pintarPanel();
+  if (performance.now() - inicio >= DESLIZAR_MS) pintarMapa(1);
 }
 
 function pintarEstado() {
@@ -155,7 +206,7 @@ function pintarEstado() {
   estado.style.setProperty("--color", viejo ? "#f0a800" : "#2fa84f");
 }
 
-document.getElementById("buscar").addEventListener("input", () => buses.length && pintar());
+document.getElementById("buscar").addEventListener("input", () => buses.length && refrescar());
 document.addEventListener("visibilitychange", () => !document.hidden && mapa.loaded() && cargar());
 </script>
 </body>
