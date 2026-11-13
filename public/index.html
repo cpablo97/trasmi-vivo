@@ -26,8 +26,11 @@
                      border: 1px solid var(--linea); border-radius: 999px; padding: 3px 10px; display: flex; gap: 6px; align-items: center; }
   #sistemas button::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
   #sistemas button[aria-pressed="false"] { opacity: .4; }
+  #capas { display: flex; gap: 14px; font-size: 13px; color: var(--suave); }
+  #capas[hidden] { display: none; }
+  #capas label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
   #sistemas span { color: var(--suave); font-variant-numeric: tabular-nums; }
-  input { font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--linea);
+  input[type=search] { font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--linea);
           background: var(--fondo); color: var(--texto); }
   button:focus-visible, input:focus-visible { outline: 2px solid var(--zonal); outline-offset: 2px; }
   footer { color: var(--suave); font-size: 11.5px; }
@@ -43,6 +46,10 @@
   <div id="estado">Cargando buses…</div>
   <div id="total"></div>
   <div id="sistemas"></div>
+  <div id="capas">
+    <label><input type="checkbox" id="ver-troncales" checked> Troncales</label>
+    <label><input type="checkbox" id="ver-estaciones" checked> Estaciones</label>
+  </div>
   <input id="buscar" type="search" placeholder="Filtrar por ruta: B10, C25, 16-8…" autocomplete="off" aria-label="Filtrar por ruta">
   <footer>Datos abiertos de TransMilenio S.A. (CC BY-SA 4.0). Proyecto independiente, no afiliado a TransMilenio.</footer>
 </div>
@@ -54,6 +61,12 @@ const COLORES = { Troncal: "#e0222b", Zonal: "#2f7fe0", Alimentador: "#2fa84f", 
 const apagados = new Set(); // sistemas que el usuario ocultó
 let buses = [];             // la última respuesta de /api/buses
 let actualizado = 0;
+
+// La red fija viene de la API de ArcGIS de TransMilenio. Esa sí acepta pedidos
+// directos desde el navegador, así que no necesita pasar por la función.
+const ARCGIS = "https://gis.transmilenio.gov.co/arcgis/rest/services/ConsultaSubgerenciaPlanificacionSITP/Consulta_Planificacion_SITP/FeatureServer";
+// Color de cada troncal según su letra (campo le_troncal).
+const TRONCALES = { A: "#1f6fd1", B: "#3aa648", C: "#e2b100", D: "#8e4bb8", E: "#9a6a3a", F: "#d8232a", G: "#2ba8d8", H: "#ee7d1a", J: "#e0679c", K: "#b59a6a", L: "#149c94", M: "#6a55c8" };
 
 // Para deslizar: dónde está dibujado cada bus ahora y desde dónde arranca el movimiento.
 const DESLIZAR_MS = 4000;    // cuánto dura el deslizamiento
@@ -75,6 +88,8 @@ const mapa = new maplibregl.Map({
 mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
 mapa.on("load", () => {
+  cargarRed();
+
   // Una "fuente" son los datos; una "capa" es cómo se pintan.
   // Los buses van como GeoJSON: el mismo formato que viste con f=geojson en ArcGIS.
   mapa.addSource("buses", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
@@ -90,6 +105,7 @@ mapa.on("load", () => {
 
   // Al tocar un bus, mostrar sus datos.
   mapa.on("click", "buses", (e) => {
+    e.originalEvent.busTocado = true; // para que no se abra también la estación de debajo
     const p = e.features[0].properties;
     const div = document.createElement("div");
     // textContent en vez de innerHTML: nunca se interpreta como código lo que venga del feed.
@@ -107,6 +123,84 @@ mapa.on("load", () => {
   setInterval(cargar, CADA_MS);
   setInterval(pintarEstado, 1000);
 });
+
+// ---------- 2b. Troncales y estaciones (API de ArcGIS) ----------
+async function cargarRed() {
+  // f=geojson devuelve justo el formato que MapLibre sabe pintar.
+  // outFields pide solo las columnas que se usan, para que la respuesta pese poco.
+  const pedir = async (capa, campos) => {
+    const r = await fetch(`${ARCGIS}/${capa}/query?where=1%3D1&outFields=${campos}&outSR=4326&f=geojson`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  };
+  try {
+    // Capa 5 = trazados troncales, capa 2 = estaciones. Los dos pedidos salen a la vez.
+    const [troncales, estaciones] = await Promise.all([
+      pedir(5, "le_troncal,nom_tronc"),
+      pedir(2, "nom_est,ub_est,num_vag,tipo_esta"),
+    ]);
+
+    // El segundo argumento "buses" pone estas capas DEBAJO de los buses.
+    mapa.addSource("troncales", { type: "geojson", data: troncales });
+    mapa.addLayer({
+      id: "troncales", type: "line", source: "troncales",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: {
+        "line-color": ["match", ["get", "le_troncal"], ...Object.entries(TRONCALES).flat(), "#6f7c80"],
+        "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2, 14, 5, 17, 10],
+        "line-opacity": 0.55,
+      },
+    }, "buses");
+
+    mapa.addSource("estaciones", { type: "geojson", data: estaciones });
+    mapa.addLayer({
+      id: "estaciones", type: "circle", source: "estaciones",
+      paint: {
+        // Los portales (tipo_esta = 1) se dibujan más grandes.
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, ["case", ["==", ["get", "tipo_esta"], 1], 4, 1.8], 14, ["case", ["==", ["get", "tipo_esta"], 1], 9, 6]],
+        "circle-color": "#12171a", "circle-stroke-color": "#e8ecea",
+        "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 10, 1, 14, 2],
+      },
+    }, "buses");
+    mapa.addLayer({
+      id: "estaciones-nombre", type: "symbol", source: "estaciones",
+      // Portales siempre con nombre; el resto solo al acercarse.
+      filter: ["any", ["==", ["get", "tipo_esta"], 1], [">=", ["zoom"], 13.5]],
+      layout: {
+        "text-field": ["get", "nom_est"], "text-size": 12, "text-font": ["Montserrat Medium", "Open Sans Regular"],
+        "text-anchor": "left", "text-offset": [0.9, 0], "text-optional": true,
+      },
+      paint: { "text-color": "#e8ecea", "text-halo-color": "#0d1113", "text-halo-width": 1.4 },
+    });
+
+    mapa.on("click", "estaciones", (e) => {
+      if (e.originalEvent.busTocado) return;
+      const p = e.features[0].properties;
+      const div = document.createElement("div");
+      const linea = (etiqueta, texto) => { const el = document.createElement(etiqueta); el.textContent = texto; div.append(el, document.createElement("br")); };
+      linea("b", p.nom_est);
+      linea("span", `${p.tipo_esta === 1 ? "Portal" : "Estación"} · ${p.ub_est || ""}`);
+      if (p.num_vag) linea("small", `${p.num_vag} vagones`);
+      new maplibregl.Popup({ closeButton: false }).setLngLat(e.features[0].geometry.coordinates).setDOMContent(div).addTo(mapa);
+    });
+    mapa.on("mouseenter", "estaciones", () => (mapa.getCanvas().style.cursor = "pointer"));
+    mapa.on("mouseleave", "estaciones", () => (mapa.getCanvas().style.cursor = ""));
+    verCapas();
+  } catch (error) {
+    // Si ArcGIS no responde, el mapa sigue funcionando solo con los buses.
+    console.warn("No se pudieron cargar estaciones y troncales:", error);
+    document.getElementById("capas").hidden = true;
+  }
+}
+
+// Mostrar u ocultar las capas según las casillas del panel.
+function verCapas() {
+  const ver = (capa, si) => mapa.getLayer(capa) && mapa.setLayoutProperty(capa, "visibility", si ? "visible" : "none");
+  ver("troncales", document.getElementById("ver-troncales").checked);
+  ver("estaciones", document.getElementById("ver-estaciones").checked);
+  ver("estaciones-nombre", document.getElementById("ver-estaciones").checked);
+}
+document.getElementById("capas").addEventListener("change", verCapas);
 
 async function cargar() {
   if (document.hidden) return; // pestaña en segundo plano: no gastar pedidos
