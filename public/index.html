@@ -19,6 +19,13 @@
            display: flex; flex-direction: column; gap: 10px; }
   h1 { font-size: 18px; margin: 0; }
   #estado { color: var(--suave); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  #progreso { height: 4px; border-radius: 2px; background: var(--linea); overflow: hidden; }
+  #progreso i { display: block; height: 100%; width: 0; background: var(--alimentador); border-radius: 2px; transition: width 1s linear; }
+  /* Cuando ya debería haber llegado el dato nuevo, la barra late en vez de crecer. */
+  #progreso.esperando i { width: 100% !important; background: var(--dual); animation: latir 1.2s ease-in-out infinite; }
+  @keyframes latir { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { #progreso i { transition: none; animation: none !important; } }
+  #proxima { color: var(--suave); font-size: 12.5px; font-variant-numeric: tabular-nums; }
   #estado::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--color, var(--suave)); }
   #total { font-size: 14px; } #total b { font-size: 20px; font-variant-numeric: tabular-nums; }
   #sistemas { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -44,6 +51,8 @@
 <div id="panel">
   <h1>Transmi en vivo</h1>
   <div id="estado">Cargando buses…</div>
+  <div id="progreso" role="progressbar" aria-label="Tiempo hasta la próxima actualización" aria-valuemin="0" aria-valuemax="100"><i></i></div>
+  <div id="proxima"></div>
   <div id="total"></div>
   <div id="sistemas"></div>
   <div id="capas">
@@ -56,11 +65,18 @@
 
 <script>
 // ---------- 1. Configuración ----------
-const CADA_MS = 20000; // cada cuánto se piden posiciones nuevas
+const CADA_MS = 10000; // cada cuánto se pregunta si hay posiciones nuevas
 const COLORES = { Troncal: "#e0222b", Zonal: "#2f7fe0", Alimentador: "#2fa84f", Dual: "#f0a800", Cable: "#9a5bd0" };
 const apagados = new Set(); // sistemas que el usuario ocultó
 let buses = [];             // la última respuesta de /api/buses
 let actualizado = 0;
+
+// Para la barra de progreso. TransMilenio no avisa cuándo sale el próximo feed y
+// su ritmo es irregular (medido: entre 34 y 103 s), así que la página lo estima:
+// recuerda cuánto pasó entre las últimas llegadas y usa el valor del medio.
+let recibido = 0;        // cuándo le llegaron a esta página los datos actuales
+const esperas = [];      // segundos entre las últimas llegadas
+let intervalo = 45;      // estimación de cuánto falta entre una llegada y la siguiente
 
 // La red fija viene de la API de ArcGIS de TransMilenio. Esa sí acepta pedidos
 // directos desde el navegador, así que no necesita pasar por la función.
@@ -209,6 +225,20 @@ async function cargar() {
     const datos = await r.json();
     if (!r.ok) throw new Error(datos.error || `HTTP ${r.status}`);
     const hayNuevos = datos.actualizado !== actualizado;
+    if (hayNuevos) {
+      const ahora = Date.now();
+      if (recibido) {
+        // Aprender del ritmo real: guardar las últimas 5 esperas y quedarse con la mediana,
+        // que no se deja engañar por una espera rara muy larga.
+        const espera = (ahora - recibido) / 1000;
+        if (espera < 240) { esperas.push(espera); if (esperas.length > 5) esperas.shift(); }
+        intervalo = [...esperas].sort((a, b) => a - b)[Math.floor(esperas.length / 2)] || intervalo;
+        recibido = ahora;
+      } else {
+        // Primera carga: se llega a mitad de ciclo, así que se cuenta desde la hora del feed.
+        recibido = Math.min(ahora, datos.actualizado);
+      }
+    }
     buses = datos.buses;
     actualizado = datos.actualizado;
     pintarPanel();
@@ -298,6 +328,18 @@ function pintarEstado() {
   const viejo = seg > 300;
   estado.textContent = viejo ? `El feed de TransMilenio lleva ${Math.round(seg / 60)} min sin actualizarse` : `En vivo · datos de hace ${seg} s`;
   estado.style.setProperty("--color", viejo ? "#f0a800" : "#2fa84f");
+
+  // Barra: qué fracción de la espera estimada ya pasó.
+  const pasado = (Date.now() - recibido) / 1000;
+  const falta = Math.round(intervalo - pasado);
+  const barra = document.getElementById("progreso");
+  const pct = Math.max(0, Math.min(100, (pasado / intervalo) * 100));
+  barra.classList.toggle("esperando", falta <= 0);
+  barra.firstElementChild.style.width = pct + "%";
+  barra.setAttribute("aria-valuenow", Math.round(pct));
+  document.getElementById("proxima").textContent = viejo ? ""
+    : falta > 0 ? `Próxima actualización en unos ${falta} s`
+    : "Esperando posiciones nuevas de TransMilenio…";
 }
 
 document.getElementById("buscar").addEventListener("input", () => buses.length && refrescar());

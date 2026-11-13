@@ -12,7 +12,7 @@ navegador ──▶ /api/buses (función de Netlify) ──▶ gtfs.transmilenio
 
 | Archivo | Qué hace |
 | --- | --- |
-| `public/index.html` | La página: el mapa (MapLibre) que pide `/api/buses` cada 20 s y pinta un punto por bus. También pide las estaciones y troncales directamente a la API de ArcGIS de TransMilenio. |
+| `public/index.html` | La página: el mapa (MapLibre) que pide `/api/buses` cada 10 s y pinta un punto por bus. También pide las estaciones y troncales directamente a la API de ArcGIS de TransMilenio. |
 | `netlify/functions/buses.mjs` | La función: baja el feed de TransMilenio (protobuf), lo convierte a JSON y le pone el nombre a cada ruta. |
 | `datos/rutas.json` | Tabla `route_id` → nombre de ruta, sacada del GTFS estático oficial. |
 | `scripts/actualizar-rutas.mjs` | Regenera esa tabla. |
