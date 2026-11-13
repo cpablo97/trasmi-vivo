@@ -26,6 +26,13 @@
   @keyframes latir { 50% { opacity: .35; } }
   @media (prefers-reduced-motion: reduce) { #progreso i { transition: none; animation: none !important; } }
   #proxima { color: var(--suave); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  #ubicar { font: inherit; font-size: 14px; color: var(--texto); background: var(--fondo); border: 1px solid var(--linea);
+            border-radius: 8px; padding: 8px 10px; cursor: pointer; display: flex; gap: 8px; align-items: center; justify-content: center; }
+  #ubicar:disabled { opacity: .6; cursor: progress; }
+  #ubicar svg { width: 16px; height: 16px; flex: none; }
+  #aviso-ubicacion { color: var(--dual); font-size: 12.5px; }
+  /* El punto que marca dónde estás: blanco con borde azul claro y un halo. */
+  .yo { width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 4px solid #4fc3ff; box-shadow: 0 0 0 8px rgba(79,195,255,.25); }
   #estado::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--color, var(--suave)); }
   #total { font-size: 14px; } #total b { font-size: 20px; font-variant-numeric: tabular-nums; }
   #sistemas { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -59,6 +66,11 @@
     <label><input type="checkbox" id="ver-troncales" checked> Troncales</label>
     <label><input type="checkbox" id="ver-estaciones" checked> Estaciones</label>
   </div>
+  <button id="ubicar" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+    <span>Usar mi ubicación</span>
+  </button>
+  <div id="aviso-ubicacion" hidden></div>
   <input id="buscar" type="search" placeholder="Filtrar por ruta: B10, C25, 16-8…" autocomplete="off" aria-label="Filtrar por ruta">
   <footer>Datos abiertos de TransMilenio S.A. (CC BY-SA 4.0). Proyecto independiente, no afiliado a TransMilenio.</footer>
 </div>
@@ -208,6 +220,47 @@ async function cargarRed() {
     document.getElementById("capas").hidden = true;
   }
 }
+
+// ---------- 2c. Mi ubicación ----------
+// navigator.geolocation es la API del navegador para pedir la posición del dispositivo.
+// El navegador le pregunta permiso a la persona; la ubicación no sale de su dispositivo:
+// solo se usa aquí para mover el mapa, no se envía a ningún servidor.
+let marcadorYo = null;
+document.getElementById("ubicar").addEventListener("click", () => {
+  const boton = document.getElementById("ubicar"), texto = boton.querySelector("span");
+  const aviso = document.getElementById("aviso-ubicacion");
+  const avisar = (mensaje) => { aviso.textContent = mensaje; aviso.hidden = !mensaje; };
+  if (!navigator.geolocation) return avisar("Este navegador no permite consultar la ubicación.");
+
+  avisar("");
+  boton.disabled = true;
+  texto.textContent = "Buscando tu ubicación…";
+  const terminar = () => { boton.disabled = false; texto.textContent = "Usar mi ubicación"; };
+
+  navigator.geolocation.getCurrentPosition(
+    // Si funciona: llega la posición.
+    ({ coords }) => {
+      terminar();
+      const aqui = [coords.longitude, coords.latitude];
+      if (!marcadorYo) {
+        const punto = Object.assign(document.createElement("div"), { className: "yo", title: "Estás aquí" });
+        marcadorYo = new maplibregl.Marker({ element: punto }).setLngLat(aqui).addTo(mapa);
+      } else marcadorYo.setLngLat(aqui);
+      mapa.flyTo({ center: aqui, zoom: 15 });
+      // El mapa solo tiene buses en Bogotá y Soacha; avisar si la persona está lejos.
+      const lejos = Math.abs(coords.longitude + 74.1) > 0.35 || Math.abs(coords.latitude - 4.65) > 0.35;
+      avisar(lejos ? "Estás fuera de Bogotá: aquí no vas a ver buses." : "");
+    },
+    // Si falla: explicar por qué.
+    (error) => {
+      terminar();
+      avisar(error.code === error.PERMISSION_DENIED ? "No diste permiso de ubicación. Puedes activarlo en los ajustes del sitio en tu navegador."
+        : error.code === error.TIMEOUT ? "La ubicación tardó demasiado. Inténtalo de nuevo."
+        : "No se pudo obtener tu ubicación. Revisa que el GPS esté activo.");
+    },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
+  );
+});
 
 // Mostrar u ocultar las capas según las casillas del panel.
 function verCapas() {
