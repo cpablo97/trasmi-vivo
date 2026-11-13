@@ -1,0 +1,8 @@
+# Le dice a Netlify cómo publicar el proyecto.
+[build]
+  publish = "public"              # la carpeta con la página
+  functions = "netlify/functions" # la carpeta con las funciones
+
+[functions]
+  node_bundler = "esbuild"
+  included_files = ["datos/rutas.json"]

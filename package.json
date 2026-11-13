@@ -1,0 +1,17 @@
+{
+  "name": "transmi-vivo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mapa de los buses de TransMilenio y el SITP en vivo",
+  "scripts": {
+    "dev": "node dev.mjs",
+    "rutas": "node scripts/actualizar-rutas.mjs"
+  },
+  "dependencies": {
+    "gtfs-realtime-bindings": "^1.1.1"
+  },
+  "devDependencies": {
+    "yauzl": "^3.4.0"
+  }
+}

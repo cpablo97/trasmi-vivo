@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transmi en vivo</title>
+<meta name="description" content="Los buses de TransMilenio y el SITP de Bogotá, en el mapa y en vivo.">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root { --fondo:#12171a; --panel:#1b2226; --texto:#e8ecea; --suave:#98a5a6; --linea:#2e383c;
+          --troncal:#e0222b; --zonal:#2f7fe0; --alimentador:#2fa84f; --dual:#f0a800; --cable:#9a5bd0; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--fondo); color: var(--texto); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #mapa { position: absolute; inset: 0; }
+  #panel { position: absolute; top: 12px; left: 12px; z-index: 2; width: min(340px, calc(100vw - 24px));
+           background: var(--panel); border: 1px solid var(--linea); border-radius: 10px; padding: 14px 16px;
+           display: flex; flex-direction: column; gap: 10px; }
+  h1 { font-size: 18px; margin: 0; }
+  #estado { color: var(--suave); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  #estado::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--color, var(--suave)); }
+  #total { font-size: 14px; } #total b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  #sistemas { display: flex; flex-wrap: wrap; gap: 6px; }
+  #sistemas button { font: inherit; font-size: 13px; color: var(--texto); background: transparent; cursor: pointer;
+                     border: 1px solid var(--linea); border-radius: 999px; padding: 3px 10px; display: flex; gap: 6px; align-items: center; }
+  #sistemas button::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+  #sistemas button[aria-pressed="false"] { opacity: .4; }
+  #sistemas span { color: var(--suave); font-variant-numeric: tabular-nums; }
+  input { font: inherit; width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--linea);
+          background: var(--fondo); color: var(--texto); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--zonal); outline-offset: 2px; }
+  footer { color: var(--suave); font-size: 11.5px; }
+  .maplibregl-popup-content { background: var(--panel); color: var(--texto); border-radius: 8px; padding: 10px 12px; font: 13px/1.4 system-ui, sans-serif; }
+  .maplibregl-popup-tip { border-top-color: var(--panel) !important; border-bottom-color: var(--panel) !important; }
+  .maplibregl-popup-content b { font-size: 15px; } .maplibregl-popup-content small { color: var(--suave); }
+</style>
+</head>
+<body>
+<div id="mapa"></div>
+<div id="panel">
+  <h1>Transmi en vivo</h1>
+  <div id="estado">Cargando buses…</div>
+  <div id="total"></div>
+  <div id="sistemas"></div>
+  <input id="buscar" type="search" placeholder="Filtrar por ruta: B10, C25, 16-8…" autocomplete="off" aria-label="Filtrar por ruta">
+  <footer>Datos abiertos de TransMilenio S.A. (CC BY-SA 4.0). Proyecto independiente, no afiliado a TransMilenio.</footer>
+</div>
+
+<script>
+// ---------- 1. Configuración ----------
+const CADA_MS = 20000; // cada cuánto se piden posiciones nuevas
+const COLORES = { Troncal: "#e0222b", Zonal: "#2f7fe0", Alimentador: "#2fa84f", Dual: "#f0a800", Cable: "#9a5bd0" };
+const apagados = new Set(); // sistemas que el usuario ocultó
+let buses = [];             // la última respuesta de /api/buses
+let actualizado = 0;
+
+// ---------- 2. El mapa ----------
+// MapLibre dibuja el mapa base (calles de OpenStreetMap, estilo de CARTO).
+const mapa = new maplibregl.Map({
+  container: "mapa",
+  style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+  center: [-74.1, 4.65], // Bogotá: [longitud, latitud]
+  zoom: 10.6,
+});
+mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+
+mapa.on("load", () => {
+  // Una "fuente" son los datos; una "capa" es cómo se pintan.
+  // Los buses van como GeoJSON: el mismo formato que viste con f=geojson en ArcGIS.
+  mapa.addSource("buses", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  mapa.addLayer({
+    id: "buses", type: "circle", source: "buses",
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 2.2, 14, 5.5, 17, 9],
+      // El color sale del campo "sistema" de cada bus.
+      "circle-color": ["match", ["get", "sistema"], ...Object.entries(COLORES).flat(), "#888"],
+      "circle-stroke-color": "#0d1113", "circle-stroke-width": 0.8,
+    },
+  });
+
+  // Al tocar un bus, mostrar sus datos.
+  mapa.on("click", "buses", (e) => {
+    const p = e.features[0].properties;
+    const div = document.createElement("div");
+    // textContent en vez de innerHTML: nunca se interpreta como código lo que venga del feed.
+    const linea = (etiqueta, texto) => { const el = document.createElement(etiqueta); el.textContent = texto; div.append(el, document.createElement("br")); };
+    linea("b", `${p.ruta} → ${p.destino}`);
+    linea("span", `${p.sistema} · bus ${p.bus} · placa ${p.placa}`);
+    linea("small", `Reportó su posición hace ${p.hace_s} s`);
+    new maplibregl.Popup({ closeButton: false }).setLngLat(e.features[0].geometry.coordinates).setDOMContent(div).addTo(mapa);
+  });
+  mapa.on("mouseenter", "buses", () => (mapa.getCanvas().style.cursor = "pointer"));
+  mapa.on("mouseleave", "buses", () => (mapa.getCanvas().style.cursor = ""));
+
+  // ---------- 3. Pedir los buses, ahora y cada 20 segundos ----------
+  cargar();
+  setInterval(cargar, CADA_MS);
+  setInterval(pintarEstado, 1000);
+});
+
+async function cargar() {
+  if (document.hidden) return; // pestaña en segundo plano: no gastar pedidos
+  try {
+    const r = await fetch("/api/buses");
+    const datos = await r.json();
+    if (!r.ok) throw new Error(datos.error || `HTTP ${r.status}`);
+    buses = datos.buses;
+    actualizado = datos.actualizado;
+    pintar();
+  } catch (error) {
+    document.getElementById("estado").textContent = `Sin conexión con el feed (${error.message}). Reintentando…`;
+    document.getElementById("estado").style.setProperty("--color", "#e0222b");
+  }
+}
+
+// ---------- 4. Pasar los datos al mapa y al panel ----------
+function pintar() {
+  const filtro = document.getElementById("buscar").value.trim().toUpperCase();
+  const visibles = buses.filter((b) => !apagados.has(b[4]) && (!filtro || b[2].toUpperCase().includes(filtro)));
+
+  // Cada bus llega como [lon, lat, ruta, destino, sistema, bus, placa, hace_s].
+  mapa.getSource("buses").setData({
+    type: "FeatureCollection",
+    features: visibles.map(([lon, lat, ruta, destino, sistema, bus, placa, hace_s]) => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [lon, lat] },
+      properties: { ruta, destino, sistema, bus, placa, hace_s },
+    })),
+  });
+
+  const cuenta = {};
+  for (const b of buses) cuenta[b[4]] = (cuenta[b[4]] || 0) + 1;
+  document.getElementById("total").innerHTML = `<b>${visibles.length.toLocaleString("es-CO")}</b> buses${filtro || apagados.size ? " con este filtro" : " en vía"}`;
+
+  const cont = document.getElementById("sistemas");
+  cont.replaceChildren(...Object.keys(COLORES).filter((s) => cuenta[s]).map((s) => {
+    const boton = document.createElement("button");
+    boton.style.setProperty("--c", COLORES[s]);
+    boton.setAttribute("aria-pressed", String(!apagados.has(s)));
+    boton.append(s, Object.assign(document.createElement("span"), { textContent: cuenta[s].toLocaleString("es-CO") }));
+    boton.onclick = () => { apagados.has(s) ? apagados.delete(s) : apagados.add(s); pintar(); };
+    return boton;
+  }));
+  pintarEstado();
+}
+
+function pintarEstado() {
+  if (!actualizado) return;
+  const seg = Math.max(0, Math.round((Date.now() - actualizado) / 1000));
+  const estado = document.getElementById("estado");
+  // Si el feed lleva más de 5 minutos sin cambiar, TransMilenio dejó de publicarlo.
+  const viejo = seg > 300;
+  estado.textContent = viejo ? `El feed de TransMilenio lleva ${Math.round(seg / 60)} min sin actualizarse` : `En vivo · datos de hace ${seg} s`;
+  estado.style.setProperty("--color", viejo ? "#f0a800" : "#2fa84f");
+}
+
+document.getElementById("buscar").addEventListener("input", () => buses.length && pintar());
+document.addEventListener("visibilitychange", () => !document.hidden && mapa.loaded() && cargar());
+</script>
+</body>
+</html>
