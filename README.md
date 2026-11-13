@@ -65,7 +65,7 @@ Límites:
 
 ## Mi paradero
 
-Responde «¿qué buses vienen a mi paradero y cuánto les falta?» sin elegir destino. Toma tu ubicación (o un punto en el mapa), busca los paraderos que estén dentro del radio que elijas (de 100 m a 1 km, 300 m al abrir) y, para el que elijas, lista los buses que llegan en los próximos 30 minutos. En el mapa se dibujan todos los del radio; en el panel, los 12 más cercanos.
+Responde «¿qué buses vienen a mi paradero y cuánto les falta?» sin elegir destino. Toma tu ubicación (o un punto en el mapa), busca los paraderos que estén dentro del radio que elijas (de 100 m a 1 km, 300 m al abrir) y, para el que elijas, lista los buses que llegan en los próximos 30 minutos. En el mapa se dibujan todos los del radio y en el panel se elige entre ellos con un menú desplegable.
 
 TransMilenio no publica horas de llegada por parada (su feed `tripupdates.pb` solo dice si un viaje está programado, añadido o cancelado), así que se calculan aquí:
 
@@ -84,7 +84,7 @@ En pantallas de 640 px o menos el panel es una hoja pegada abajo, con dos estado
 - **Plegada**: título, estado «En vivo» y una línea de resumen (total de buses, o el paradero y su próximo bus, o la ruta elegida y su tiempo).
 - **Abierta**: hasta el 62 % del alto. Las listas de buses y de rutas van arriba; los ajustes (ubicación, radios, formulario del viaje) quedan en bloques plegables.
 
-Todo lo que se toca mide al menos 44 px de alto, los campos de texto usan 16 px para que el iPhone no amplíe la página, se respetan la muesca y la barra de inicio, y no hay botones + / − (se hace zoom con los dedos). Los créditos del mapa están en el botón ⓘ de arriba a la derecha.
+La hoja solo se desplaza hacia arriba y abajo, nunca de lado: cada componente se ajusta al ancho de su contenedor. Todo lo que se toca mide al menos 44 px de alto, los campos de texto usan 16 px para que el iPhone no amplíe la página, se respetan la muesca y la barra de inicio, y no hay botones + / − (se hace zoom con los dedos). Los créditos del mapa están en el botón ⓘ de arriba a la derecha.
 
 ## Mantener los datos al día
 

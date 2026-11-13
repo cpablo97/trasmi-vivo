@@ -57,7 +57,18 @@
   /* ----- Planear viaje ----- */
   /* El panel nunca es más alto que la pantalla; lo que no cabe se desplaza dentro de #mas. */
   #panel { max-height: calc(100% - 24px); }
-  #mas { overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+  /* overflow-x: hidden: la hoja solo se desplaza hacia arriba y abajo, nunca de lado. */
+  #mas { overflow-y: auto; overflow-x: hidden; min-height: 0; overscroll-behavior: contain; }
+  /* Nada dentro del panel puede medir más que su contenedor. (En un flex, un hijo no se
+     encoge por debajo de su contenido salvo que se le diga min-width: 0.) */
+  #mas > *, #paradero > *, #viaje > *, details.ajustes > div > * { min-width: 0; max-width: 100%; }
+  #panel :is(button, summary, small, #p-titulo, #p-aviso, #v-aviso, #p-cuantos) { overflow-wrap: anywhere; }
+  /* Menú desplegable de paraderos: una línea del ancho del panel. */
+  #panel select { font: inherit; font-size: 14px; width: 100%; padding: 8px 32px 8px 10px; border-radius: 8px; border: 1px solid var(--zonal);
+                  background: var(--fondo) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%238fc0ff' stroke-width='2'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E") no-repeat right 12px center / 12px;
+                  color: #8fc0ff; appearance: none; -webkit-appearance: none; text-overflow: ellipsis; cursor: pointer; }
+  #panel select option { color: var(--texto); background: var(--panel); }
+  #panel select:focus-visible { outline: 2px solid var(--zonal); outline-offset: 2px; }
   #modos { display: flex; gap: 6px; }
   #modos button { flex: 1; font: inherit; font-size: 14px; font-weight: 600; color: #fff; background: var(--zonal); border: 0; border-radius: 8px; padding: 9px 10px; cursor: pointer; }
   #viaje { display: flex; flex-direction: column; gap: 10px; }
@@ -153,10 +164,7 @@
     /* Safari en iPhone amplía toda la página al tocar un campo con letra menor de 16 px. */
     input[type=search] { font-size: 16px; }
 
-    /* Tiras que se desplazan de lado en vez de apilar muchos botones. */
-    .tira { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px; padding: 0 12px; scroll-padding: 0 12px; }
-    .tira::-webkit-scrollbar { display: none; }
-    .tira button { flex: none; white-space: nowrap; }
+    #panel select { min-height: 44px; font-size: 16px; }
 
     /* En teléfono se hace zoom con los dedos: sobran los botones + y −. */
     .maplibregl-ctrl-top-right .maplibregl-ctrl-group { display: none; }
@@ -191,8 +199,8 @@
   </div>
   <div id="paradero" hidden>
     <div id="p-titulo"></div>
-    <div id="p-cercanos" class="v-botones tira" aria-label="Paraderos cercanos"></div>
-    <div id="p-sentidos" class="tira" aria-label="Filtrar por sentido"></div>
+    <select id="p-cercanos" aria-label="Paradero: elige otro de los cercanos"></select>
+    <div id="p-sentidos" aria-label="Filtrar por sentido"></div>
     <div id="p-aviso" role="status"></div>
     <ol id="p-llegadas"></ol>
     <button id="p-otro" type="button" hidden></button>

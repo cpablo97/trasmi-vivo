@@ -7,7 +7,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const MAX_LLEGADAS = 12;
-  const MAX_BOTONES = 12;   // paraderos que se listan como botones, para que el panel no se vuelva interminable
   const MAX_EN_MAPA = 80;   // paraderos que se dibujan en el mapa
 
   let V = null, red = null;
@@ -168,7 +167,7 @@
 
     const fuera = cercanos[0].metros > radio; // no había ninguno dentro del radio
     $("p-cuantos").textContent = fuera ? `No hay paraderos a ${a10(radio)} o menos. Este es el más cercano, a ${a10(cercanos[0].metros)}.`
-      : todos.length > MAX_BOTONES ? `${todos.length} paraderos en ese radio. Aquí abajo están los ${MAX_BOTONES} más cercanos; en el mapa puedes tocar cualquiera.`
+      : todos.length > MAX_EN_MAPA ? `Hay ${todos.length} paraderos en ese radio; se muestran los ${MAX_EN_MAPA} más cercanos.`
       : `${todos.length} ${todos.length === 1 ? "paradero" : "paraderos"} en ese radio.`;
     // El círculo del radio en el mapa.
     mapa.getSource("p-radio").setData({ ...V.circulo(aqui, radio), properties: {} });
@@ -182,6 +181,9 @@
     if (aqui) buscarCercanos(true);
   });
 
+  // Elegir otro paradero en el menú desplegable.
+  $("p-cercanos").addEventListener("change", (e) => elegirParadero(cercanos[+e.target.value], true));
+
   // ---------- Qué paradero ----------
   // Texto corto del sentido: "↑ norte" o "↑↓ norte y sur".
   const flechas = (p) => p.sentidos.map((s) => s.flecha).join("");
@@ -191,17 +193,11 @@
     paradero = p;
     sentido = null;
 
-    // Botones para cambiar entre los paraderos cercanos, cada uno con su flecha.
-    // Se listan los más cercanos; si el elegido (tocado en el mapa) está más lejos, se añade.
-    const enBotones = cercanos.slice(0, MAX_BOTONES);
-    if (!enBotones.includes(p)) enBotones.push(p);
-    $("p-cercanos").replaceChildren(...enBotones.map((c) => {
-      const boton = crear("button", { type: "button", textContent: `${flechas(c)} ${c.nombre} · ${a10(c.metros)}` });
-      boton.setAttribute("aria-pressed", String(c === paradero));
-      boton.setAttribute("aria-label", `${c.nombre}, buses hacia el ${hacia(c)}, a ${a10(c.metros)}`);
-      boton.onclick = () => elegirParadero(c, true);
-      return boton;
-    }));
+    // Menú desplegable con todos los paraderos del radio, cada uno con su flecha y su distancia.
+    // El valor de cada opción es su posición en la lista "cercanos".
+    const menu = $("p-cercanos");
+    menu.replaceChildren(...cercanos.map((c, n) => crear("option", { value: n, textContent: `${flechas(c)} ${c.nombre} · ${a10(c.metros)}` })));
+    menu.value = cercanos.indexOf(p); // también cuando el paradero se eligió tocándolo en el mapa
 
     // Título: nombre, costado y sentido.
     const titulo = $("p-titulo");
